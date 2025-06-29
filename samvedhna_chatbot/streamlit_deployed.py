@@ -253,8 +253,13 @@ with st.sidebar:
     lang = st.radio("🌐 Language", ["English", "Hindi"])
     st.session_state.lang = "hi" if lang == "Hindi" else "english"
 
+    # Voice output toggle
+    voice_output_enabled = st.toggle("🔊 Enable Voice Output", value=False)
+    if voice_output_enabled:
+        st.info("🔔 Voice output feature is only available in the local version.")
+
     if st.button("🎙️ Speak"):
-        st.info("🔔 Voice input/output features are only available in the local version.")
+        st.info("🔔 Voice input feature is only available in the local version.")
 
     if st.button("🧹 Clear Chat"):
         st.session_state.chat_history = []
