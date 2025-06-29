@@ -2,6 +2,10 @@
 
 Samvedhna is an empathetic multilingual chatbot powered by Emotion Detection and Large Language Models. It provides a unique conversational experience by understanding and responding to users' emotions in both English and Hindi.
 
+## 🌐 Live Demo
+
+**Try the hosted version:** [https://samvedna-chatbot.streamlit.app/](https://samvedna-chatbot.streamlit.app/)
+
 ## Features 🌟
 
 - **Emotion Detection**: Analyzes user messages to detect emotions and adapts responses accordingly
