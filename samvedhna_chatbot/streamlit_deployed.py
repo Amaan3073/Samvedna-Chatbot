@@ -16,6 +16,15 @@ from typing import List, Dict, Any, Optional, Union
 from openai.types.chat import ChatCompletionMessageParam
 import tempfile
 
+# --- Voice Features (Optional) ---
+ENABLE_VOICE_FEATURES = False
+try:
+    from voice_output import speak_sync
+    from speech_input import listen_from_microphone
+    ENABLE_VOICE_FEATURES = True
+except Exception as e:
+    st.warning("Voice features are not available in this environment")
+
 # --- SSL Certificate Fix ---
 # Set SSL certificate path or disable verification for development
 try:
@@ -183,6 +192,8 @@ for key, default in {
     "chat_history": [],
     "lang": "english",
     "user_name": None,
+    "tts_enabled": ENABLE_VOICE_FEATURES,
+    "temp_voice_input": "",
     "show_emotion_analysis": False,
     "temp_dir": tempfile.mkdtemp()  # Create a temporary directory for file operations
 }.items():
@@ -195,6 +206,12 @@ with st.sidebar:
 
     lang = st.radio("🌐 Language", ["English", "Hindi"])
     st.session_state.lang = "hi" if lang == "Hindi" else "english"
+
+    if ENABLE_VOICE_FEATURES:
+        st.session_state.tts_enabled = st.toggle("🔊 Enable Voice Output", value=st.session_state.tts_enabled)
+
+        if st.button("🎙️ Speak"):
+            st.error("⚠️ Voice input is only supported when running locally")
 
     if st.button("🧹 Clear Chat"):
         st.session_state.chat_history = []
@@ -229,6 +246,9 @@ st.caption("Empathetic multilingual chatbot powered by Emotion Detection + LLM")
 
 # --- User Input Box
 user_input = st.chat_input("Type your message...")
+if st.session_state.temp_voice_input:
+    user_input = st.session_state.temp_voice_input
+    st.session_state.temp_voice_input = ""
 
 # --- Chat Logic
 if user_input:
@@ -266,6 +286,12 @@ if user_input:
         
         translated = translate_response(reply, st.session_state.lang)
         st.session_state.chat_history.append((user_input, translated))
+
+        if st.session_state.tts_enabled and ENABLE_VOICE_FEATURES:
+            try:
+                speak_sync(translated, st.session_state.lang)
+            except Exception as e:
+                st.warning("Voice output failed. Continuing without voice.")
             
     except Exception as e:
         st.error(f"❌ Error generating response: {str(e)}")
