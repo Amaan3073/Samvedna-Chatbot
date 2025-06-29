@@ -213,6 +213,7 @@ if 'initialized' not in st.session_state:
     st.session_state.voice_error = None
     st.session_state.transcript_container = None
     st.session_state.voice_initialized = False
+    st.session_state.voice_status = None
 
 # Initialize voice features
 if ENABLE_VOICE_FEATURES and not st.session_state.voice_initialized:
@@ -227,6 +228,16 @@ with st.sidebar:
     st.session_state.lang = "hi" if lang == "Hindi" else "english"
 
     if ENABLE_VOICE_FEATURES:
+        st.divider()
+        st.subheader("🎙️ Voice Features")
+        
+        # Show voice feature status
+        if st.session_state.voice_status:
+            if "error" in st.session_state.voice_status.lower():
+                st.error(st.session_state.voice_status)
+            else:
+                st.info(st.session_state.voice_status)
+        
         st.session_state.tts_enabled = st.toggle("🔊 Enable Voice Output", value=st.session_state.tts_enabled)
         
         col1, col2 = st.columns(2)

@@ -5,6 +5,7 @@ def init_voice_features():
     """Initialize browser-based voice features"""
     components.html(
         """
+        <div id="voice-status"></div>
         <script>
         // Global variables
         let synth = null;
@@ -12,14 +13,52 @@ def init_voice_features():
         let isListening = false;
         let voices = [];
 
-        // Initialize speech synthesis
-        function initSpeechSynthesis() {
+        // Update status display
+        function updateStatus(message, isError = false) {
+            const status = document.getElementById('voice-status');
+            if (status) {
+                status.textContent = message;
+                status.style.color = isError ? 'red' : 'green';
+                status.style.marginBottom = '10px';
+                console.log(message);
+            }
+        }
+
+        // Check browser compatibility
+        function checkBrowserCompatibility() {
+            if (!window.speechSynthesis) {
+                updateStatus('Speech synthesis not supported in this browser', true);
+                return false;
+            }
+            if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
+                updateStatus('Speech recognition not supported in this browser', true);
+                return false;
+            }
+            return true;
+        }
+
+        // Request microphone permission
+        async function requestMicrophonePermission() {
             try {
-                synth = window.speechSynthesis;
-                if (!synth) {
-                    console.error('Speech synthesis not supported');
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                stream.getTracks().forEach(track => track.stop()); // Stop the stream after permission check
+                updateStatus('Microphone permission granted');
+                return true;
+            } catch (error) {
+                updateStatus('Microphone permission denied: ' + error.message, true);
+                return false;
+            }
+        }
+
+        // Initialize speech synthesis
+        async function initSpeechSynthesis() {
+            try {
+                if (!window.speechSynthesis) {
+                    updateStatus('Speech synthesis not supported', true);
                     return false;
                 }
+
+                synth = window.speechSynthesis;
 
                 // Load voices
                 voices = synth.getVoices();
@@ -29,13 +68,15 @@ def init_voice_features():
                         window.speechSynthesis.onvoiceschanged = () => {
                             voices = synth.getVoices();
                             console.log('Voices loaded:', voices.length);
+                            updateStatus('Speech synthesis initialized with ' + voices.length + ' voices');
                             resolve(true);
                         };
                     });
                 }
+                updateStatus('Speech synthesis initialized with ' + voices.length + ' voices');
                 return true;
             } catch (error) {
-                console.error('Speech synthesis initialization error:', error);
+                updateStatus('Speech synthesis initialization error: ' + error.message, true);
                 return false;
             }
         }
@@ -45,16 +86,17 @@ def init_voice_features():
             try {
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
                 if (!SpeechRecognition) {
-                    console.error('Speech recognition not supported');
+                    updateStatus('Speech recognition not supported', true);
                     return false;
                 }
                 recognition = new SpeechRecognition();
                 recognition.continuous = true;
                 recognition.interimResults = true;
                 recognition.maxAlternatives = 1;
+                updateStatus('Speech recognition initialized');
                 return true;
             } catch (error) {
-                console.error('Speech recognition initialization error:', error);
+                updateStatus('Speech recognition initialization error: ' + error.message, true);
                 return false;
             }
         }
@@ -75,6 +117,9 @@ def init_voice_features():
 
                     const utterance = new SpeechSynthesisUtterance(text);
                     utterance.lang = lang === 'hi' ? 'hi-IN' : 'en-US';
+                    utterance.rate = 1.0;
+                    utterance.pitch = 1.0;
+                    utterance.volume = 1.0;
                     
                     // Find appropriate voice
                     const availableVoices = synth.getVoices();
@@ -83,34 +128,46 @@ def init_voice_features():
                                 availableVoices[0];
                     if (voice) {
                         utterance.voice = voice;
+                        console.log('Using voice:', voice.name);
                     }
 
                     // Set up event handlers
                     utterance.onstart = () => {
-                        console.log('Started speaking');
+                        updateStatus('Speaking...');
                     };
                     
                     utterance.onend = () => {
-                        console.log('Finished speaking');
+                        updateStatus('Finished speaking');
                         resolve();
                     };
                     
                     utterance.onerror = (event) => {
-                        console.error('Speech synthesis error:', event);
+                        updateStatus('Speech synthesis error: ' + event.error, true);
                         reject(event);
                     };
 
                     synth.speak(utterance);
                 } catch (error) {
-                    console.error('Error in speakText:', error);
+                    updateStatus('Error in speakText: ' + error.message, true);
                     reject(error);
                 }
             });
         }
 
         // Function to start listening
-        function startListening(lang) {
+        async function startListening(lang) {
             try {
+                // Check browser compatibility first
+                if (!checkBrowserCompatibility()) {
+                    return;
+                }
+
+                // Request microphone permission
+                const permissionGranted = await requestMicrophonePermission();
+                if (!permissionGranted) {
+                    return;
+                }
+
                 if (!recognition) {
                     if (!initSpeechRecognition()) {
                         throw new Error('Could not initialize speech recognition');
@@ -121,7 +178,7 @@ def init_voice_features():
                 
                 recognition.onstart = () => {
                     isListening = true;
-                    console.log('Started listening');
+                    updateStatus('Listening...');
                     window.parent.Streamlit.setComponentValue('');
                 };
 
@@ -130,10 +187,11 @@ def init_voice_features():
                         .map(result => result[0].transcript)
                         .join(' ');
                     window.parent.Streamlit.setComponentValue(transcript);
+                    updateStatus('Transcribing...');
                 };
 
                 recognition.onerror = (event) => {
-                    console.error('Recognition error:', event.error);
+                    updateStatus('Recognition error: ' + event.error, true);
                     window.parent.Streamlit.setComponentValue('ERROR: ' + event.error);
                     isListening = false;
                 };
@@ -143,16 +201,19 @@ def init_voice_features():
                         // Restart if we're still supposed to be listening
                         try {
                             recognition.start();
+                            updateStatus('Restarting recognition...');
                         } catch (error) {
-                            console.error('Error restarting recognition:', error);
+                            updateStatus('Error restarting recognition: ' + error.message, true);
                             isListening = false;
                         }
+                    } else {
+                        updateStatus('Stopped listening');
                     }
                 };
 
                 recognition.start();
             } catch (error) {
-                console.error('Error in startListening:', error);
+                updateStatus('Error in startListening: ' + error.message, true);
                 window.parent.Streamlit.setComponentValue('ERROR: ' + error.message);
             }
         }
@@ -163,21 +224,29 @@ def init_voice_features():
                 if (recognition) {
                     isListening = false;
                     recognition.stop();
+                    updateStatus('Stopping recognition...');
                 }
             } catch (error) {
-                console.error('Error in stopListening:', error);
+                updateStatus('Error in stopListening: ' + error.message, true);
             }
         }
 
         // Initialize features when the page loads
         window.addEventListener('load', async () => {
-            console.log('Initializing voice features...');
+            updateStatus('Initializing voice features...');
+            
+            // Check browser compatibility
+            if (!checkBrowserCompatibility()) {
+                return;
+            }
+
+            // Initialize features
             const synthInitialized = await initSpeechSynthesis();
             const recognitionInitialized = initSpeechRecognition();
-            console.log('Voice features initialized:', {
-                synthesis: synthInitialized,
-                recognition: recognitionInitialized
-            });
+            
+            updateStatus('Voice features initialized: ' + 
+                        'synthesis=' + (synthInitialized ? 'yes' : 'no') + ', ' +
+                        'recognition=' + (recognitionInitialized ? 'yes' : 'no'));
         });
 
         // Listen for messages from Streamlit
@@ -198,7 +267,7 @@ def init_voice_features():
         });
         </script>
         """,
-        height=0
+        height=50  # Increased height to show status messages
     )
 
 def speak_browser(text: str, lang: str = 'english'):
