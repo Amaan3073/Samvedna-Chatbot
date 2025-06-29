@@ -27,8 +27,10 @@ def save_log_data(data):
         log_path = get_log_path()
         with open(log_path, 'w') as f:
             json.dump(data, f, indent=2)
+        st.session_state.last_save_time = datetime.now().isoformat()  # Track last save
     except Exception as e:
-        st.warning(f"Failed to save log data: {str(e)}")
+        st.error(f"Failed to save log data: {str(e)}")
+        st.error(f"Attempted to save to: {log_path}")
 
 def load_log_data():
     """Load log data from file"""
@@ -66,8 +68,12 @@ def update_conversation_log(user_input: str, emotion: str, score: float, lang: s
         # Save updated log data
         save_log_data(log_data)
         
+        # Debug info
+        st.sidebar.info(f"💾 Last save: {st.session_state.last_save_time}")
+        
     except Exception as e:
-        st.warning(f"Failed to update conversation log: {str(e)}")
+        st.error(f"Failed to update conversation log: {str(e)}")
+        st.error(f"Log path: {get_log_path()}")
 
 # --- SSL Certificate Fix ---
 # Set SSL certificate path or disable verification for development
@@ -242,6 +248,11 @@ for key, default in {
     if key not in st.session_state:
         st.session_state[key] = default
 
+# Initialize conversation log file in temp directory
+if not os.path.exists(get_log_path()):
+    save_log_data({"sessions": []})
+    st.info(f"📝 Initialized conversation log in temporary directory: {st.session_state.temp_dir}")
+
 # --- Sidebar Settings ---
 with st.sidebar:
     st.header("⚙️ Chat Settings")
@@ -346,9 +357,13 @@ if st.session_state.show_emotion_analysis:
                 log_path = get_log_path()  # Use the same path as update_conversation_log
                 if os.path.exists(log_path):
                     with open(log_path) as f:
-                        return json.load(f).get("sessions", [])
-            except:
-                return []
+                        data = json.load(f)
+                        st.sidebar.success(f"📊 Successfully loaded log data from: {log_path}")
+                        return data.get("sessions", [])
+                else:
+                    st.warning(f"Log file not found at: {log_path}")
+            except Exception as e:
+                st.error(f"Error loading log data: {str(e)}")
             return []
 
         def get_emotion_timeline() -> pd.DataFrame:
@@ -402,6 +417,11 @@ if st.session_state.show_emotion_analysis:
         if not st.session_state.chat_history:
             st.warning("❗ No chat history found. Please start a conversation to view analysis.")
         else:
+            # Display current log file path and last save time
+            st.sidebar.info(f"📁 Log file: {get_log_path()}")
+            if hasattr(st.session_state, 'last_save_time'):
+                st.sidebar.info(f"💾 Last save: {st.session_state.last_save_time}")
+
             st.markdown("## 📈 Emotion Trend Over Time (Current Session)")
             timeline_df = get_emotion_timeline()
             if not timeline_df.empty:
