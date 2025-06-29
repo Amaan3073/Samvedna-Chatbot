@@ -1,18 +1,30 @@
-
 # Place at the top of the file
 import streamlit as st
 from emotion_detector import detect_emotion
 from translator import translate_response
 from logger import log_message
 from openai import OpenAI
-from voice_output import speak_sync
-# from speech_input import listen_from_microphone
 import re
 import pandas as pd
 import matplotlib.pyplot as plt
 from datetime import datetime
 import json
 import altair as alt
+import os
+import ssl
+from typing import List, Dict, Any, Optional, Union
+from openai.types.chat import ChatCompletionMessageParam
+import tempfile
+
+# --- SSL Certificate Fix ---
+# Set SSL certificate path or disable verification for development
+try:
+    # Try to use system certificates
+    ssl_context = ssl.create_default_context()
+except:
+    # If that fails, disable SSL verification (for development only)
+    os.environ['SSL_CERT_FILE'] = ''
+    os.environ['REQUESTS_CA_BUNDLE'] = ''
 
 # --- Streamlit page config
 st.set_page_config(
@@ -113,6 +125,11 @@ st.markdown("""
             border: none !important;
         }
 
+        .stDownloadButton > button {
+            width: 100%;
+            text-align: left !important;
+        }
+
         @media only screen and (max-width: 768px) {
             h1 {
                 font-size: 1.5rem !important;
@@ -151,19 +168,23 @@ st.markdown("""
 
 
 # --- OpenRouter client setup ---
-client = OpenAI(
-    api_key=st.secrets["OPENROUTER_API_KEY"],
-    base_url="https://openrouter.ai/api/v1"
-)
+try:
+    client = OpenAI(
+        api_key=st.secrets["OPENROUTER_API_KEY"],
+        base_url="https://openrouter.ai/api/v1"
+    )
+except Exception as e:
+    st.error(f"Error initializing OpenAI client: {str(e)}")
+    st.info("Please check your API key configuration in .streamlit/secrets.toml")
+    client = None
 
 # --- Session State Init ---
 for key, default in {
     "chat_history": [],
     "lang": "english",
     "user_name": None,
-    "tts_enabled": True,
-    "temp_voice_input": "",
-    "show_emotion_analysis": False
+    "show_emotion_analysis": False,
+    "temp_dir": tempfile.mkdtemp()  # Create a temporary directory for file operations
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -174,15 +195,6 @@ with st.sidebar:
 
     lang = st.radio("🌐 Language", ["English", "Hindi"])
     st.session_state.lang = "hi" if lang == "Hindi" else "english"
-
-    st.session_state.tts_enabled = st.toggle("🔊 Enable Voice Output", value=st.session_state.tts_enabled)
-
-    # if st.button("🎙️ Speak"):
-    #     speech_lang = "hi-IN" if st.session_state.lang == "hi" else "en-IN"
-    #     spoken = listen_from_microphone(speech_lang)
-    #     if spoken:
-    #         st.session_state.temp_voice_input = spoken
-    #         st.info(f"🗣️ You said: {spoken}")
 
     if st.button("🧹 Clear Chat"):
         st.session_state.chat_history = []
@@ -199,7 +211,7 @@ with st.sidebar:
     st.session_state.show_emotion_analysis = st.checkbox("📊 Show Chat Analysis", value=st.session_state.show_emotion_analysis)
 
 # --- Input Handler ---
-def extract_name(text):
+def extract_name(text: str) -> Optional[str]:
     emotion, _ = detect_emotion(text)
     if emotion in ["happy", "sad", "confused", "angry", "greeting"]:
         return None
@@ -217,9 +229,6 @@ st.caption("Empathetic multilingual chatbot powered by Emotion Detection + LLM")
 
 # --- User Input Box
 user_input = st.chat_input("Type your message...")
-if st.session_state.temp_voice_input:
-    user_input = st.session_state.temp_voice_input
-    st.session_state.temp_voice_input = ""
 
 # --- Chat Logic
 if user_input:
@@ -233,25 +242,35 @@ if user_input:
     if emotion not in ["neutral", "greeting"]:
         prompt = f"[EMOTION: {emotion.upper()}]\n{prompt}"
 
-    messages = [{"role": "system", "content":
-        "You are a helpful and empathetic assistant named Samvedhna created by Amaan Ali. If the user shares their name, remember it and use it in future replies.Otherwise reply normally without name. Adjust your tone gently based on the user's emotion if it is clearly expressed. Otherwise, respond neutrally and kindly."
-}]
+    messages: List[ChatCompletionMessageParam] = [
+        {"role": "system", "content": "You are a helpful and empathetic assistant named Samvedhna created by Amaan Ali. If the user shares their name, remember it and use it in future replies.Otherwise reply normally without name. Adjust your tone gently based on the user's emotion if it is clearly expressed. Otherwise, respond neutrally and kindly."}
+    ]
     for u, b in st.session_state.chat_history:
-        messages += [{"role": "user", "content": u}, {"role": "assistant", "content": b}]
+        messages.append({"role": "user", "content": u})
+        messages.append({"role": "assistant", "content": b})
     messages.append({"role": "user", "content": prompt})
 
-    response = client.chat.completions.create(
-        model="mistralai/mistral-7b-instruct",
-        messages=messages,
-        temperature=0.7,
-        max_tokens=200
-    )
-    reply = response.choices[0].message.content.strip()
-    translated = translate_response(reply, st.session_state.lang)
-    st.session_state.chat_history.append((user_input, translated))
-
-    if st.session_state.tts_enabled:
-        speak_sync(translated, st.session_state.lang)
+    try:
+        if client is None:
+            st.error("❌ OpenAI client not initialized. Please check your API configuration.")
+            reply = "I'm sorry, but I'm having trouble connecting to my AI service. Please check your API key configuration."
+        else:
+            response = client.chat.completions.create(
+                model="mistralai/mistral-7b-instruct",
+                messages=messages,
+                temperature=0.7,
+                max_tokens=200
+            )
+            message_content = response.choices[0].message.content
+            reply = message_content.strip() if message_content else "I'm sorry, I couldn't generate a response."
+        
+        translated = translate_response(reply, st.session_state.lang)
+        st.session_state.chat_history.append((user_input, translated))
+            
+    except Exception as e:
+        st.error(f"❌ Error generating response: {str(e)}")
+        error_reply = "I'm sorry, but I encountered an error while processing your request. Please try again."
+        st.session_state.chat_history.append((user_input, error_reply))
 
 # --- Chat Display (dynamic & reversed)
 if not st.session_state.show_emotion_analysis:
@@ -266,17 +285,17 @@ if st.session_state.show_emotion_analysis:
         from collections import Counter
         from datetime import datetime
 
-        def get_log_data():
+        def get_log_data() -> List[Dict[str, Any]]:
             try:
                 with open("conversation_log.json") as f:
                     return json.load(f).get("sessions", [])
             except:
                 return []
 
-        def get_emotion_timeline():
+        def get_emotion_timeline() -> pd.DataFrame:
             sessions = get_log_data()
             if not sessions:
-                return pd.DataFrame(columns=["Time", "Emotion"])
+                return pd.DataFrame(data=[], columns=["Time", "Emotion"])  # type: ignore
             messages = sessions[-1]["messages"]
             data = []
             for msg in messages:
@@ -288,11 +307,11 @@ if st.session_state.show_emotion_analysis:
                         continue
             return pd.DataFrame(data)
 
-        def get_pie():
+        def get_pie() -> Counter[str]:
             trend_df = get_emotion_timeline()
             return Counter(trend_df["Emotion"].tolist())
 
-        def mood_scores():
+        def mood_scores() -> tuple[List[str], List[float]]:
             score_map = {"happy": 3, "confused": 1, "neutral": 0, "greeting": 0, "sad": -2, "angry": -3}
             sessions = get_log_data()
             labels, scores = [], []
@@ -303,7 +322,7 @@ if st.session_state.show_emotion_analysis:
                     scores.append(round(sum(mood) / len(mood), 2))
             return labels, scores
 
-        def session_time():
+        def session_time() -> tuple[float, float]:
             sessions = get_log_data()
             times = []
             for s in sessions:
@@ -316,9 +335,9 @@ if st.session_state.show_emotion_analysis:
                     except:
                         continue
             if not times:
-                return 0, 0
+                return 0.0, 0.0
             current = times[-1]
-            average = sum(times[:-1]) / len(times[:-1]) if len(times) > 1 else 0
+            average = sum(times[:-1]) / len(times[:-1]) if len(times) > 1 else 0.0
             return round(current, 2), round(average, 2)
 
         if not st.session_state.chat_history:
@@ -327,11 +346,11 @@ if st.session_state.show_emotion_analysis:
             st.markdown("## 📈 Emotion Trend Over Time (Current Session)")
             timeline_df = get_emotion_timeline()
             if not timeline_df.empty:
-                chart = alt.Chart(timeline_df).mark_line(point=True).encode(
-                    x=alt.X("Time:T", axis=alt.Axis(title="Timestamp")),
-                    y=alt.Y("Emotion:N", axis=alt.Axis(title="Emotion")),
-                    tooltip=["Time", "Emotion"]
-                ).properties(
+                chart = alt.Chart(timeline_df).mark_line(point=True).encode(  # type: ignore
+                    x=alt.X("Time:T", axis=alt.Axis(title="Timestamp")),  # type: ignore
+                    y=alt.Y("Emotion:N", axis=alt.Axis(title="Emotion")),  # type: ignore
+                    tooltip=["Time", "Emotion"]  # type: ignore
+                ).properties(  # type: ignore
                     width=700,
                     height=300,
                     title="Emotion Timeline"
@@ -344,7 +363,7 @@ if st.session_state.show_emotion_analysis:
             pie = get_pie()
             if pie:
                 fig1, ax1 = plt.subplots(figsize=(6, 3))
-                ax1.pie(pie.values(), labels=pie.keys(), autopct="%1.1f%%", startangle=90, textprops={'fontsize': 9})
+                ax1.pie(list(pie.values()), labels=list(pie.keys()), autopct="%1.1f%%", startangle=90, textprops={'fontsize': 9})
                 ax1.axis("equal")
                 st.pyplot(fig1, use_container_width=False)
             else:
@@ -381,3 +400,30 @@ if st.session_state.show_emotion_analysis:
 # Footer
 st.markdown("---")
 st.caption("Built with ❤️ by Amaan Ali")
+
+# --- File Operations ---
+def get_log_path():
+    """Get the path to the log file, using temporary directory in cloud"""
+    if os.getenv('STREAMLIT_CLOUD'):
+        return os.path.join(st.session_state.temp_dir, 'conversation_log.json')
+    return 'conversation_log.json'
+
+def save_log_data(data):
+    """Save log data to file"""
+    try:
+        log_path = get_log_path()
+        with open(log_path, 'w') as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        st.warning(f"Failed to save log data: {str(e)}")
+
+def load_log_data():
+    """Load log data from file"""
+    try:
+        log_path = get_log_path()
+        if os.path.exists(log_path):
+            with open(log_path) as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {"sessions": []}

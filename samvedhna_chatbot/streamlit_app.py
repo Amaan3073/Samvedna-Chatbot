@@ -21,15 +21,9 @@ ENABLE_VOICE_FEATURES = False
 try:
     from voice_output import speak_sync
     from speech_input import listen_from_microphone
-    import pyaudio  # Try importing pyaudio directly to check if it's available
     ENABLE_VOICE_FEATURES = True
-except ImportError as e:
-    if "pyaudio" in str(e):
-        st.warning("🎤 Voice input is not available: PyAudio is not installed. Voice features will be disabled.")
-    elif "espeak" in str(e).lower():
-        st.warning("🔊 Text-to-Speech is not available: eSpeak is not installed. Voice output will be disabled.")
-    else:
-        st.warning("🎙️ Voice features are not available in this environment")
+except Exception as e:
+    st.warning("Voice features are not available in this environment")
 
 # --- SSL Certificate Fix ---
 # Set SSL certificate path or disable verification for development
@@ -217,23 +211,11 @@ with st.sidebar:
         st.session_state.tts_enabled = st.toggle("🔊 Enable Voice Output", value=st.session_state.tts_enabled)
 
         if st.button("🎙️ Speak"):
-            try:
-                speech_lang = "hi-IN" if st.session_state.lang == "hi" else "en-IN"
-                spoken = listen_from_microphone(speech_lang)
-                if spoken:
-                    st.session_state.temp_voice_input = spoken
-                    st.info(f"🗣️ You said: {spoken}")
-                else:
-                    st.warning("⚠️ No speech detected. Please try speaking again.")
-            except AttributeError as e:
-                if "pyaudio" in str(e).lower():
-                    st.error("❌ PyAudio is not installed. Voice input is not available.")
-                    st.info("💡 Please install PyAudio to use voice input features.")
-                else:
-                    st.error(f"❌ Voice input error: {str(e)}")
-            except Exception as e:
-                st.error(f"❌ Voice input error: {str(e)}")
-                st.info("🎤 Please check your microphone settings and permissions.")
+            speech_lang = "hi-IN" if st.session_state.lang == "hi" else "en-IN"
+            spoken = listen_from_microphone(speech_lang)
+            if spoken:
+                st.session_state.temp_voice_input = spoken
+                st.info(f"🗣️ You said: {spoken}")
 
     if st.button("🧹 Clear Chat"):
         st.session_state.chat_history = []
@@ -313,11 +295,7 @@ if user_input:
             try:
                 speak_sync(translated, st.session_state.lang)
             except Exception as e:
-                if "espeak" in str(e).lower():
-                    st.warning("❌ Text-to-Speech failed: eSpeak is not installed. Voice output is disabled.")
-                    st.info("💡 Please install eSpeak to use voice output features.")
-                else:
-                    st.warning(f"❌ Voice output failed: {str(e)}. Continuing without voice.")
+                st.warning("Voice output failed. Continuing without voice.")
             
     except Exception as e:
         st.error(f"❌ Error generating response: {str(e)}")
