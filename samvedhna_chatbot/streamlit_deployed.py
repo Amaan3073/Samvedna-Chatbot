@@ -407,11 +407,6 @@ if st.session_state.show_emotion_analysis:
         if not st.session_state.chat_history:
             st.warning("❗ No chat history found. Please start a conversation to view analysis.")
         else:
-            # Display current log file path and last save time
-            st.sidebar.info(f"📁 Log file: {get_log_path()}")
-            if hasattr(st.session_state, 'last_save_time'):
-                st.sidebar.info(f"💾 Last save: {st.session_state.last_save_time}")
-
             st.markdown("## 📈 Emotion Trend Over Time (Current Session)")
             timeline_df = get_emotion_timeline()
             if not timeline_df.empty:
