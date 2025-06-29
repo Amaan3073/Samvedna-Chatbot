@@ -285,9 +285,6 @@ st.caption("Empathetic multilingual chatbot powered by Emotion Detection + LLM")
 
 # --- User Input Box
 user_input = st.chat_input("Type your message...")
-if st.session_state.temp_voice_input:
-    user_input = st.session_state.temp_voice_input
-    st.session_state.temp_voice_input = ""
 
 # --- Chat Logic
 if user_input:
