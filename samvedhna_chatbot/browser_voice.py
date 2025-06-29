@@ -27,6 +27,7 @@ def init_voice_features():
                 // Set up recognition event handlers
                 recognition.onresult = (event) => {
                     const transcript = event.results[0][0].transcript;
+                    // Send transcript to Streamlit
                     window.parent.postMessage({
                         type: 'speech-input',
                         value: transcript
@@ -64,8 +65,23 @@ def init_voice_features():
                 if (!synth) {
                     throw new Error('Speech synthesis not initialized');
                 }
+                // Cancel any ongoing speech
+                synth.cancel();
+                
                 const utterance = new SpeechSynthesisUtterance(text);
                 utterance.lang = lang === 'hi' ? 'hi-IN' : 'en-US';
+                utterance.onend = () => {
+                    window.parent.postMessage({
+                        type: 'speak-end'
+                    }, '*');
+                };
+                utterance.onerror = (event) => {
+                    console.error('Speech synthesis error:', event.error);
+                    window.parent.postMessage({
+                        type: 'speak-error',
+                        value: event.error
+                    }, '*');
+                };
                 synth.speak(utterance);
             } catch (error) {
                 console.error('Error speaking text:', error);
@@ -144,32 +160,29 @@ def speak_browser(text: str, lang: str = 'english'):
         height=0,
     )
 
-def listen_browser(lang: str = 'english') -> str:
-    """Start browser-based speech recognition"""
-    result_placeholder = st.empty()
+def listen_browser(lang: str = 'english'):
+    """Start browser-based speech recognition and return a placeholder for the transcript"""
+    # Create a container for the transcript
+    transcript_container = st.empty()
     
+    # Create a component to handle speech recognition
     components.html(
         f"""
         <script>
-        let messageHandler = function(event) {{
+        // Function to handle speech recognition messages
+        function handleSpeechMessage(event) {{
             if (event.data.type === 'speech-input') {{
-                const transcript = event.data.value;
-                window.parent.postMessage({{
-                    type: 'update-transcript',
-                    value: transcript
-                }}, '*');
+                // Update the transcript in Streamlit's session state
+                window.parent.Streamlit.setComponentValue(event.data.value);
             }} else if (event.data.type === 'speech-error') {{
-                window.parent.postMessage({{
-                    type: 'update-transcript',
-                    value: '❌ Error: ' + event.data.value
-                }}, '*');
-            }} else if (event.data.type === 'speech-end') {{
-                window.removeEventListener('message', messageHandler);
+                window.parent.Streamlit.setComponentValue('ERROR: ' + event.data.value);
             }}
-        }};
+        }}
         
-        window.addEventListener('message', messageHandler);
+        // Add message listener
+        window.addEventListener('message', handleSpeechMessage);
         
+        // Start listening
         window.parent.postMessage({{
             type: 'listen',
             lang: {repr('hi' if lang == 'hi' else 'en')}
@@ -177,6 +190,7 @@ def listen_browser(lang: str = 'english') -> str:
         </script>
         """,
         height=0,
+        key="speech_recognition"
     )
     
-    return result_placeholder 
+    return transcript_container 

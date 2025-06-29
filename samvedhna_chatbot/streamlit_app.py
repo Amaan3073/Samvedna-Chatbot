@@ -205,11 +205,11 @@ for key, default in {
     "lang": "english",
     "user_name": None,
     "tts_enabled": ENABLE_VOICE_FEATURES,
-    "temp_voice_input": "",
+    "voice_input": "",  # Changed from temp_voice_input
     "show_emotion_analysis": False,
-    "temp_dir": tempfile.mkdtemp(),  # Create a temporary directory for file operations
-    "listening": False,  # New state for tracking speech input status
-    "voice_error": None  # New state for tracking voice errors
+    "temp_dir": tempfile.mkdtemp(),
+    "listening": False,
+    "voice_error": None
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -230,13 +230,19 @@ with st.sidebar:
                 st.session_state.listening = not st.session_state.listening
                 if st.session_state.listening:
                     st.session_state.voice_error = None
-                    st.session_state.temp_voice_input = listen_browser(st.session_state.lang)
+                    transcript_container = listen_browser(st.session_state.lang)
+                    # Display the transcript in real-time
+                    if transcript_container is not None:
+                        transcript_container.text_area("Voice Input", value=st.session_state.voice_input, disabled=True)
                 else:
-                    st.session_state.temp_voice_input = ""
+                    # When stopping, if we have voice input, use it
+                    if st.session_state.voice_input and not st.session_state.voice_input.startswith("ERROR:"):
+                        user_input = st.session_state.voice_input
+                        st.session_state.voice_input = ""
         
         with col2:
             if st.button("🗑️ Clear", use_container_width=True):
-                st.session_state.temp_voice_input = ""
+                st.session_state.voice_input = ""
                 st.session_state.voice_error = None
         
         # Show voice input status
@@ -244,8 +250,12 @@ with st.sidebar:
             st.info("🎙️ Listening... Click Stop when done.")
         elif st.session_state.voice_error:
             st.error(f"❌ {st.session_state.voice_error}")
-        elif st.session_state.temp_voice_input:
-            st.success("✅ Voice input received!")
+        elif st.session_state.voice_input:
+            if st.session_state.voice_input.startswith("ERROR:"):
+                st.error(st.session_state.voice_input)
+            else:
+                st.success("✅ Voice input received!")
+                st.text_area("Transcript", value=st.session_state.voice_input, disabled=True)
 
     if st.button("🧹 Clear Chat"):
         st.session_state.chat_history = []
@@ -280,57 +290,66 @@ st.caption("Empathetic multilingual chatbot powered by Emotion Detection + LLM")
 
 # --- User Input Box
 user_input = st.chat_input("Type your message...")
-if st.session_state.temp_voice_input:
-    user_input = st.session_state.temp_voice_input
-    st.session_state.temp_voice_input = ""
+if st.session_state.voice_input:
+    user_input = st.session_state.voice_input
+    st.session_state.voice_input = ""
 
 # --- Chat Logic
-if user_input:
-    extract_name(user_input)
-    emotion, score = detect_emotion(user_input)
-    log_message(user_input, emotion, score, st.session_state.lang)
+if user_input or (st.session_state.voice_input and not st.session_state.voice_input.startswith("ERROR:")):
+    # Use voice input if available and valid
+    current_input: str = ""
+    if st.session_state.voice_input and not st.session_state.voice_input.startswith("ERROR:"):
+        current_input = str(st.session_state.voice_input)
+        st.session_state.voice_input = ""
+    else:
+        current_input = str(user_input) if user_input else ""
 
-    prompt = user_input
-    if st.session_state.user_name:
-        prompt = f"My name is {st.session_state.user_name}. {prompt}"
-    if emotion not in ["neutral", "greeting"]:
-        prompt = f"[EMOTION: {emotion.upper()}]\n{prompt}"
+    if current_input:
+        extract_name(current_input)
+        emotion, score = detect_emotion(current_input)
+        log_message(current_input, emotion, score, st.session_state.lang)
 
-    messages: List[ChatCompletionMessageParam] = [
-        {"role": "system", "content": "You are a helpful and empathetic assistant named Samvedhna created by Amaan Ali. If the user shares their name, remember it and use it in future replies.Otherwise reply normally without name. Adjust your tone gently based on the user's emotion if it is clearly expressed. Otherwise, respond neutrally and kindly."}
-    ]
-    for u, b in st.session_state.chat_history:
-        messages.append({"role": "user", "content": u})
-        messages.append({"role": "assistant", "content": b})
-    messages.append({"role": "user", "content": prompt})
+        prompt = current_input
+        if st.session_state.user_name:
+            prompt = f"My name is {st.session_state.user_name}. {prompt}"
+        if emotion not in ["neutral", "greeting"]:
+            prompt = f"[EMOTION: {emotion.upper()}]\n{prompt}"
 
-    try:
-        if client is None:
-            st.error("❌ OpenAI client not initialized. Please check your API configuration.")
-            reply = "I'm sorry, but I'm having trouble connecting to my AI service. Please check your API key configuration."
-        else:
-            response = client.chat.completions.create(
-                model="mistralai/mistral-7b-instruct",
-                messages=messages,
-                temperature=0.7,
-                max_tokens=200
-            )
-            message_content = response.choices[0].message.content
-            reply = message_content.strip() if message_content else "I'm sorry, I couldn't generate a response."
-        
-        translated = translate_response(reply, st.session_state.lang)
-        st.session_state.chat_history.append((user_input, translated))
+        messages: List[ChatCompletionMessageParam] = [
+            {"role": "system", "content": "You are a helpful and empathetic assistant named Samvedhna created by Amaan Ali. If the user shares their name, remember it and use it in future replies.Otherwise reply normally without name. Adjust your tone gently based on the user's emotion if it is clearly expressed. Otherwise, respond neutrally and kindly."}
+        ]
+        for u, b in st.session_state.chat_history:
+            messages.append({"role": "user", "content": str(u)})
+            messages.append({"role": "assistant", "content": str(b)})
+        messages.append({"role": "user", "content": str(prompt)})
 
-        if st.session_state.tts_enabled and ENABLE_VOICE_FEATURES:
-            try:
-                speak_browser(translated, st.session_state.lang)
-            except Exception as e:
-                st.warning("Voice output failed. Continuing without voice.")
+        try:
+            if client is None:
+                st.error("❌ OpenAI client not initialized. Please check your API configuration.")
+                reply = "I'm sorry, but I'm having trouble connecting to my AI service. Please check your API key configuration."
+            else:
+                response = client.chat.completions.create(
+                    model="mistralai/mistral-7b-instruct",
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=200
+                )
+                message_content = response.choices[0].message.content
+                reply = message_content.strip() if message_content else "I'm sorry, I couldn't generate a response."
             
-    except Exception as e:
-        st.error(f"❌ Error generating response: {str(e)}")
-        error_reply = "I'm sorry, but I encountered an error while processing your request. Please try again."
-        st.session_state.chat_history.append((user_input, error_reply))
+            translated = translate_response(reply, st.session_state.lang)
+            st.session_state.chat_history.append((current_input, translated))
+
+            if st.session_state.tts_enabled and ENABLE_VOICE_FEATURES:
+                try:
+                    speak_browser(translated, st.session_state.lang)
+                except Exception as e:
+                    st.warning(f"Voice output failed: {str(e)}")
+                
+        except Exception as e:
+            st.error(f"❌ Error generating response: {str(e)}")
+            error_reply = "I'm sorry, but I encountered an error while processing your request. Please try again."
+            st.session_state.chat_history.append((current_input, error_reply))
 
 # --- Chat Display (dynamic & reversed)
 if not st.session_state.show_emotion_analysis:
