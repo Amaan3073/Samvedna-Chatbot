@@ -1,5 +1,5 @@
 from typing import Optional
-from googletrans import Translator
+from googletrans import Translator, LANGUAGES
 
 def translate_response(text: str, target_lang: str = "english") -> str:
     """

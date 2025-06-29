@@ -9,4 +9,4 @@ matplotlib>=3.8.2
 altair>=5.2.0
 python-dateutil==2.8.2
 certifi
-googletrans==3.1.0a0
+googletrans-py==4.0.0
