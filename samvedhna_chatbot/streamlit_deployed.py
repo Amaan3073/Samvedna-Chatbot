@@ -346,46 +346,15 @@ if st.session_state.show_emotion_analysis:
         from datetime import datetime
 
         def get_log_data() -> List[Dict[str, Any]]:
-            """Load log data from both temp directory (current session) and main file (previous sessions)"""
-            all_sessions = []
-            
-            # Load previous sessions from main conversation_log.json
-            try:
-                if os.path.exists("conversation_log.json"):
-                    with open("conversation_log.json") as f:
-                        main_data = json.load(f)
-                        main_sessions = main_data.get("sessions", [])
-                        # Convert old format to new format if needed
-                        for session in main_sessions:
-                            if "messages" in session:
-                                for msg in session["messages"]:
-                                    # Convert old 'message' field to 'text' field
-                                    if "message" in msg and "text" not in msg:
-                                        msg["text"] = msg["message"]
-                        all_sessions.extend(main_sessions)
-            except Exception as e:
-                st.sidebar.error(f"Error loading main log: {str(e)}")
-            
-            # Load current session from temp directory
             try:
                 log_path = get_log_path()
                 if os.path.exists(log_path):
                     with open(log_path) as f:
-                        temp_data = json.load(f)
-                        temp_sessions = temp_data.get("sessions", [])
-                        # Only add current session if it has messages
-                        if temp_sessions and temp_sessions[-1].get("messages"):
-                            all_sessions.append(temp_sessions[-1])
-            except Exception as e:
-                st.sidebar.error(f"Error loading temp log: {str(e)}")
-            
-            # Debug info
-            st.sidebar.info(f"Loaded {len(all_sessions)} sessions total")
-            for i, session in enumerate(all_sessions):
-                msg_count = len(session.get("messages", []))
-                st.sidebar.info(f"Session {i+1}: {msg_count} messages")
-            
-            return all_sessions
+                        data = json.load(f)
+                        return data.get("sessions", [])
+            except Exception:
+                pass
+            return []
 
         def get_emotion_timeline() -> pd.DataFrame:
             sessions = get_log_data()
@@ -411,11 +380,7 @@ if st.session_state.show_emotion_analysis:
             sessions = get_log_data()
             labels, scores = [], []
             for i, session in enumerate(sessions):
-                mood = []
-                for m in session.get("messages", []):
-                    # Handle both old and new message formats
-                    emotion = m.get("emotion", "neutral")
-                    mood.append(score_map.get(emotion, 0))
+                mood = [score_map.get(m["emotion"], 0) for m in session.get("messages", [])]
                 if mood:
                     labels.append(f"Session {i+1}")
                     scores.append(round(sum(mood) / len(mood), 2))
@@ -468,7 +433,7 @@ if st.session_state.show_emotion_analysis:
             else:
                 st.info("No emotion data available for pie chart.")
 
-            st.markdown("## 📊 Mood Score Comparison (All Sessions)")
+            st.markdown("## 📊 Mood Score (Current Session)")
             labels, scores = mood_scores()
             if scores:
                 fig2, ax2 = plt.subplots(figsize=(6, 3))
@@ -482,7 +447,7 @@ if st.session_state.show_emotion_analysis:
             else:
                 st.info("No mood score data available.")
 
-            st.markdown("## ⏱️ Session Duration Comparison (minutes)")
+            st.markdown("## ⏱️ Session Duration (Current Session)")
             curr, avg = session_time()
             if curr > 0:
                 duration_df = pd.DataFrame({
