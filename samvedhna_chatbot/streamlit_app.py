@@ -211,7 +211,6 @@ if 'initialized' not in st.session_state:
     st.session_state.temp_dir = tempfile.mkdtemp()
     st.session_state.listening = False
     st.session_state.voice_error = None
-    st.session_state.transcript_container = None
 
 # --- Sidebar Settings ---
 with st.sidebar:
@@ -230,24 +229,30 @@ with st.sidebar:
                 if st.session_state.listening:
                     st.session_state.voice_error = None
                     st.session_state.voice_input = ""
-                    st.session_state.transcript_container = listen_browser(st.session_state.lang)
+                    transcript_container = listen_browser(st.session_state.lang)
+                    if transcript_container is not None:
+                        transcript_container.text_area("Voice Input", value=st.session_state.voice_input or "", disabled=True)
                 else:
-                    st.session_state.listening = False
-                    if st.session_state.transcript_container is not None:
-                        st.session_state.transcript_container.empty()
+                    # Send stop message to browser
+                    components.html(
+                        """
+                        <script>
+                        window.parent.postMessage({
+                            type: 'stop-listen'
+                        }, '*');
+                        </script>
+                        """,
+                        height=0
+                    )
         
         with col2:
             if st.button("🗑️ Clear", use_container_width=True):
                 st.session_state.voice_input = ""
                 st.session_state.voice_error = None
-                if st.session_state.transcript_container is not None:
-                    st.session_state.transcript_container.empty()
         
         # Show voice input status
         if st.session_state.listening:
             st.info("🎙️ Listening... Click Stop when done.")
-            if st.session_state.transcript_container is not None:
-                st.session_state.transcript_container.text_area("Voice Input", value=st.session_state.voice_input or "", disabled=True)
         elif st.session_state.voice_error:
             st.error(f"❌ {st.session_state.voice_error}")
         elif st.session_state.voice_input:
