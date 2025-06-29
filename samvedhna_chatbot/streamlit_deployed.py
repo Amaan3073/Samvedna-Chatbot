@@ -458,6 +458,10 @@ if st.session_state.show_emotion_analysis:
             else:
                 st.info("Insufficient data for session duration.")
 
+            # Add message about local version for session comparisons
+            st.markdown("---")
+            st.info("💡 **Note:** Use the local version to compare current session with other sessions and access advanced analytics features.")
+
     except Exception as e:
         st.error(f"⚠️ Error while loading chat analysis: {str(e)}")
 
