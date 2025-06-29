@@ -15,15 +15,11 @@ import ssl
 from typing import List, Dict, Any, Optional, Union
 from openai.types.chat import ChatCompletionMessageParam
 import tempfile
+from browser_voice import init_voice_features, speak_browser, listen_browser
 
-# --- Voice Features (Optional) ---
-ENABLE_VOICE_FEATURES = False
-try:
-    from voice_output import speak_sync
-    from speech_input import listen_from_microphone
-    ENABLE_VOICE_FEATURES = True
-except Exception as e:
-    st.warning("Voice features are not available in this environment")
+# --- Voice Features (Browser-based) ---
+ENABLE_VOICE_FEATURES = True
+init_voice_features()
 
 # --- SSL Certificate Fix ---
 # Set SSL certificate path or disable verification for development
@@ -190,7 +186,8 @@ for key, default in {
     "tts_enabled": ENABLE_VOICE_FEATURES,
     "temp_voice_input": "",
     "show_emotion_analysis": False,
-    "temp_dir": tempfile.mkdtemp()  # Create a temporary directory for file operations
+    "temp_dir": tempfile.mkdtemp(),  # Create a temporary directory for file operations
+    "listening": False  # New state for tracking speech input status
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -205,12 +202,14 @@ with st.sidebar:
     if ENABLE_VOICE_FEATURES:
         st.session_state.tts_enabled = st.toggle("🔊 Enable Voice Output", value=st.session_state.tts_enabled)
 
-        if st.button("🎙️ Speak"):
-            speech_lang = "hi-IN" if st.session_state.lang == "hi" else "en-IN"
-            spoken = listen_from_microphone(speech_lang)
-            if spoken:
-                st.session_state.temp_voice_input = spoken
-                st.info(f"🗣️ You said: {spoken}")
+        if st.button("🎙️ Start Speaking" if not st.session_state.listening else "🛑 Stop Speaking"):
+            st.session_state.listening = not st.session_state.listening
+            if st.session_state.listening:
+                speech_lang = "hi" if st.session_state.lang == "hi" else "english"
+                transcript_placeholder = listen_browser(speech_lang)
+                st.session_state.temp_voice_input = transcript_placeholder
+            else:
+                st.session_state.temp_voice_input = ""
 
     if st.button("🧹 Clear Chat"):
         st.session_state.chat_history = []
@@ -288,7 +287,7 @@ if user_input:
 
         if st.session_state.tts_enabled and ENABLE_VOICE_FEATURES:
             try:
-                speak_sync(translated, st.session_state.lang)
+                speak_browser(translated, st.session_state.lang)
             except Exception as e:
                 st.warning("Voice output failed. Continuing without voice.")
             
