@@ -258,7 +258,7 @@ if st.session_state.temp_voice_input:
 if user_input:
     extract_name(user_input)
     emotion, score = detect_emotion(user_input)
-    log_message(user_input, emotion, score, st.session_state.lang)
+    update_conversation_log(user_input, emotion, score, st.session_state.lang)
 
     prompt = user_input
     if st.session_state.user_name:
@@ -434,9 +434,7 @@ st.caption("Built with ❤️ by Amaan Ali")
 # --- File Operations ---
 def get_log_path():
     """Get the path to the log file, using temporary directory in cloud"""
-    if os.getenv('STREAMLIT_CLOUD'):
-        return os.path.join(st.session_state.temp_dir, 'conversation_log.json')
-    return 'conversation_log.json'
+    return os.path.join(st.session_state.temp_dir, 'conversation_log.json')
 
 def save_log_data(data):
     """Save log data to file"""
@@ -457,3 +455,31 @@ def load_log_data():
     except Exception:
         pass
     return {"sessions": []}
+
+def update_conversation_log(user_input: str, emotion: str, score: float, lang: str):
+    """Update the conversation log with new message"""
+    try:
+        log_data = load_log_data()
+        
+        # Get current session or create new one
+        if not log_data["sessions"] or len(log_data["sessions"][-1]["messages"]) > 50:
+            log_data["sessions"].append({
+                "start_time": datetime.now().isoformat(),
+                "messages": []
+            })
+        
+        # Add message to current session
+        current_session = log_data["sessions"][-1]
+        current_session["messages"].append({
+            "text": user_input,
+            "emotion": emotion,
+            "score": score,
+            "lang": lang,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        # Save updated log data
+        save_log_data(log_data)
+        
+    except Exception as e:
+        st.warning(f"Failed to update conversation log: {str(e)}")
