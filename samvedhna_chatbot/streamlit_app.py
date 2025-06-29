@@ -174,13 +174,21 @@ st.markdown("""
 components.html(
     """
     <script>
-    // Handle transcript updates from the voice component
+    // Handle messages from the voice component
     window.addEventListener('message', function(event) {
-        if (event.data.type === 'update-transcript') {
-            // Use Streamlit's setComponentValue to update the session state
-            if (window.parent.Streamlit) {
-                window.parent.Streamlit.setComponentValue(event.data.value);
-            }
+        if (event.data.type === 'transcript') {
+            // Update transcript
+            window.parent.Streamlit.setComponentValue({
+                type: 'transcript',
+                text: event.data.text
+            });
+        } else if (event.data.type === 'status') {
+            // Update status
+            window.parent.Streamlit.setComponentValue({
+                type: 'status',
+                message: event.data.message,
+                isError: event.data.isError
+            });
         }
     });
     </script>
@@ -233,8 +241,21 @@ with st.sidebar:
         
         # Show voice feature status
         if st.session_state.voice_status:
-            if "error" in st.session_state.voice_status.lower():
-                st.error(st.session_state.voice_status)
+            if isinstance(st.session_state.voice_status, dict):
+                if st.session_state.voice_status.get('type') == 'status':
+                    message = st.session_state.voice_status.get('message', '')
+                    is_error = st.session_state.voice_status.get('isError', False)
+                    if is_error:
+                        st.error(message)
+                    else:
+                        st.info(message)
+                elif st.session_state.voice_status.get('type') == 'transcript':
+                    text = st.session_state.voice_status.get('text', '')
+                    if text:
+                        if text.startswith('ERROR:'):
+                            st.error(text)
+                        else:
+                            st.session_state.voice_input = text
             else:
                 st.info(st.session_state.voice_status)
         
