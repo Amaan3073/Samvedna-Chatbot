@@ -48,6 +48,12 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+**Note for Windows users:** If you encounter issues installing PyAudio, try:
+```bash
+pip install pipwin
+pipwin install pyaudio
+```
+
 4. Set up your environment variables:
 Create a `.streamlit/secrets.toml` file with:
 ```toml
@@ -133,6 +139,7 @@ samvedhna_chatbot/
 - **gtts==2.5.4**: Google Text-to-Speech
 - **pyttsx3==2.98**: Offline text-to-speech
 - **SpeechRecognition==3.10.0**: Speech recognition
+- **PyAudio==0.2.11**: Audio input/output for speech recognition
 - **pandas==2.2.3**: Data manipulation
 - **matplotlib==3.8.2**: Plotting
 - **altair==4.2.2**: Interactive charts

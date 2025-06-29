@@ -250,7 +250,9 @@ if not os.path.exists(get_log_path()):
 with st.sidebar:
     st.header("⚙️ Chat Settings")
 
-    lang = st.radio("🌐 Language", ["English", "Hindi"])
+    # Language selection with proper state management
+    current_lang = "Hindi" if st.session_state.lang == "hi" else "English"
+    lang = st.radio("🌐 Language", ["English", "Hindi"], index=0 if current_lang == "English" else 1)
     st.session_state.lang = "hi" if lang == "Hindi" else "english"
 
     # Voice output toggle
