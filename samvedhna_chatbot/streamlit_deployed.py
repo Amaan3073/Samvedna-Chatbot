@@ -16,14 +16,58 @@ from typing import List, Dict, Any, Optional, Union
 from openai.types.chat import ChatCompletionMessageParam
 import tempfile
 
-# --- Voice Features (Optional) ---
-ENABLE_VOICE_FEATURES = False
-try:
-    from voice_output import speak_sync
-    from speech_input import listen_from_microphone
-    ENABLE_VOICE_FEATURES = True
-except Exception as e:
-    st.warning("Voice features are not available in this environment")
+# --- File Operations ---
+def get_log_path():
+    """Get the path to the log file, using temporary directory in cloud"""
+    return os.path.join(st.session_state.temp_dir, 'conversation_log.json')
+
+def save_log_data(data):
+    """Save log data to file"""
+    try:
+        log_path = get_log_path()
+        with open(log_path, 'w') as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        st.warning(f"Failed to save log data: {str(e)}")
+
+def load_log_data():
+    """Load log data from file"""
+    try:
+        log_path = get_log_path()
+        if os.path.exists(log_path):
+            with open(log_path) as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {"sessions": []}
+
+def update_conversation_log(user_input: str, emotion: str, score: float, lang: str):
+    """Update the conversation log with new message"""
+    try:
+        log_data = load_log_data()
+        
+        # Get current session or create new one
+        if not log_data["sessions"] or len(log_data["sessions"][-1]["messages"]) > 50:
+            log_data["sessions"].append({
+                "start_time": datetime.now().isoformat(),
+                "messages": []
+            })
+        
+        # Add message to current session
+        current_session = log_data["sessions"][-1]
+        current_session["messages"].append({
+            "text": user_input,
+            "emotion": emotion,
+            "score": score,
+            "lang": lang,
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        # Save updated log data
+        save_log_data(log_data)
+        
+    except Exception as e:
+        st.warning(f"Failed to update conversation log: {str(e)}")
 
 # --- SSL Certificate Fix ---
 # Set SSL certificate path or disable verification for development
@@ -192,8 +236,6 @@ for key, default in {
     "chat_history": [],
     "lang": "english",
     "user_name": None,
-    "tts_enabled": ENABLE_VOICE_FEATURES,
-    "temp_voice_input": "",
     "show_emotion_analysis": False,
     "temp_dir": tempfile.mkdtemp()  # Create a temporary directory for file operations
 }.items():
@@ -207,15 +249,8 @@ with st.sidebar:
     lang = st.radio("🌐 Language", ["English", "Hindi"])
     st.session_state.lang = "hi" if lang == "Hindi" else "english"
 
-    if ENABLE_VOICE_FEATURES:
-        st.session_state.tts_enabled = st.toggle("🔊 Enable Voice Output", value=st.session_state.tts_enabled)
-
-        if st.button("🎙️ Speak"):
-            speech_lang = "hi-IN" if st.session_state.lang == "hi" else "en-IN"
-            spoken = listen_from_microphone(speech_lang)
-            if spoken:
-                st.session_state.temp_voice_input = spoken
-                st.info(f"🗣️ You said: {spoken}")
+    if st.button("🎙️ Speak"):
+        st.info("🔔 Voice input/output features are only available in the local version.")
 
     if st.button("🧹 Clear Chat"):
         st.session_state.chat_history = []
@@ -290,12 +325,6 @@ if user_input:
         
         translated = translate_response(reply, st.session_state.lang)
         st.session_state.chat_history.append((user_input, translated))
-
-        if st.session_state.tts_enabled and ENABLE_VOICE_FEATURES:
-            try:
-                speak_sync(translated, st.session_state.lang)
-            except Exception as e:
-                st.warning("Voice output failed. Continuing without voice.")
             
     except Exception as e:
         st.error(f"❌ Error generating response: {str(e)}")
@@ -430,56 +459,3 @@ if st.session_state.show_emotion_analysis:
 # Footer
 st.markdown("---")
 st.caption("Built with ❤️ by Amaan Ali")
-
-# --- File Operations ---
-def get_log_path():
-    """Get the path to the log file, using temporary directory in cloud"""
-    return os.path.join(st.session_state.temp_dir, 'conversation_log.json')
-
-def save_log_data(data):
-    """Save log data to file"""
-    try:
-        log_path = get_log_path()
-        with open(log_path, 'w') as f:
-            json.dump(data, f, indent=2)
-    except Exception as e:
-        st.warning(f"Failed to save log data: {str(e)}")
-
-def load_log_data():
-    """Load log data from file"""
-    try:
-        log_path = get_log_path()
-        if os.path.exists(log_path):
-            with open(log_path) as f:
-                return json.load(f)
-    except Exception:
-        pass
-    return {"sessions": []}
-
-def update_conversation_log(user_input: str, emotion: str, score: float, lang: str):
-    """Update the conversation log with new message"""
-    try:
-        log_data = load_log_data()
-        
-        # Get current session or create new one
-        if not log_data["sessions"] or len(log_data["sessions"][-1]["messages"]) > 50:
-            log_data["sessions"].append({
-                "start_time": datetime.now().isoformat(),
-                "messages": []
-            })
-        
-        # Add message to current session
-        current_session = log_data["sessions"][-1]
-        current_session["messages"].append({
-            "text": user_input,
-            "emotion": emotion,
-            "score": score,
-            "lang": lang,
-            "timestamp": datetime.now().isoformat()
-        })
-        
-        # Save updated log data
-        save_log_data(log_data)
-        
-    except Exception as e:
-        st.warning(f"Failed to update conversation log: {str(e)}")
