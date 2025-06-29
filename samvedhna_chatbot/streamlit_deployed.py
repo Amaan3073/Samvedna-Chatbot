@@ -211,7 +211,11 @@ with st.sidebar:
         st.session_state.tts_enabled = st.toggle("🔊 Enable Voice Output", value=st.session_state.tts_enabled)
 
         if st.button("🎙️ Speak"):
-            st.error("⚠️ Voice input is only supported when running locally")
+            speech_lang = "hi-IN" if st.session_state.lang == "hi" else "en-IN"
+            spoken = listen_from_microphone(speech_lang)
+            if spoken:
+                st.session_state.temp_voice_input = spoken
+                st.info(f"🗣️ You said: {spoken}")
 
     if st.button("🧹 Clear Chat"):
         st.session_state.chat_history = []
