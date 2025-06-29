@@ -212,10 +212,12 @@ if 'initialized' not in st.session_state:
     st.session_state.listening = False
     st.session_state.voice_error = None
     st.session_state.transcript_container = None
+    st.session_state.voice_initialized = False
 
 # Initialize voice features
-if ENABLE_VOICE_FEATURES:
+if ENABLE_VOICE_FEATURES and not st.session_state.voice_initialized:
     init_voice_features()
+    st.session_state.voice_initialized = True
 
 # --- Sidebar Settings ---
 with st.sidebar:
@@ -248,6 +250,7 @@ with st.sidebar:
                         height=0
                     )
                     st.session_state.transcript_container = None
+                    st.rerun()  # Force a rerun to update UI
         
         with col2:
             if st.button("🗑️ Clear", use_container_width=True):
@@ -255,12 +258,13 @@ with st.sidebar:
                 st.session_state.voice_error = None
                 if st.session_state.transcript_container:
                     st.session_state.transcript_container.empty()
+                st.rerun()  # Force a rerun to update UI
         
         # Show voice input status
         if st.session_state.listening:
             st.info("🎙️ Listening... Click Stop when done.")
             if st.session_state.transcript_container:
-                st.session_state.transcript_container.text_area("Voice Input", value=st.session_state.voice_input or "", disabled=True)
+                st.session_state.transcript_container.text_area("Voice Input", value=st.session_state.voice_input or "", disabled=True, key="voice_input_area")
         elif st.session_state.voice_error:
             st.error(f"❌ {st.session_state.voice_error}")
         elif st.session_state.voice_input:
@@ -268,7 +272,7 @@ with st.sidebar:
                 st.error(st.session_state.voice_input)
             else:
                 st.success("✅ Voice input received!")
-                st.text_area("Transcript", value=st.session_state.voice_input, disabled=True)
+                st.text_area("Transcript", value=st.session_state.voice_input, disabled=True, key="transcript_area")
 
     if st.button("🧹 Clear Chat"):
         st.session_state.chat_history = []
@@ -313,6 +317,7 @@ if user_input or (st.session_state.voice_input and not st.session_state.voice_in
         st.session_state.voice_input = ""
         if st.session_state.transcript_container:
             st.session_state.transcript_container.empty()
+        st.rerun()  # Force a rerun to update UI
     else:
         current_input = str(user_input) if user_input else ""
 

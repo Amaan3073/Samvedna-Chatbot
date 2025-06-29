@@ -25,10 +25,13 @@ def init_voice_features():
                 voices = synth.getVoices();
                 if (voices.length === 0) {
                     // Wait for voices to load
-                    synth.onvoiceschanged = () => {
-                        voices = synth.getVoices();
-                        console.log('Voices loaded:', voices.length);
-                    };
+                    return new Promise((resolve) => {
+                        window.speechSynthesis.onvoiceschanged = () => {
+                            voices = synth.getVoices();
+                            console.log('Voices loaded:', voices.length);
+                            resolve(true);
+                        };
+                    });
                 }
                 return true;
             } catch (error) {
@@ -48,6 +51,7 @@ def init_voice_features():
                 recognition = new SpeechRecognition();
                 recognition.continuous = true;
                 recognition.interimResults = true;
+                recognition.maxAlternatives = 1;
                 return true;
             } catch (error) {
                 console.error('Speech recognition initialization error:', error);
@@ -57,10 +61,11 @@ def init_voice_features():
 
         // Function to speak text
         function speakText(text, lang) {
-            return new Promise((resolve, reject) => {
+            return new Promise(async (resolve, reject) => {
                 try {
                     if (!synth) {
-                        if (!initSpeechSynthesis()) {
+                        const initialized = await initSpeechSynthesis();
+                        if (!initialized) {
                             throw new Error('Could not initialize speech synthesis');
                         }
                     }
@@ -117,6 +122,7 @@ def init_voice_features():
                 recognition.onstart = () => {
                     isListening = true;
                     console.log('Started listening');
+                    window.parent.Streamlit.setComponentValue('');
                 };
 
                 recognition.onresult = (event) => {
@@ -135,7 +141,12 @@ def init_voice_features():
                 recognition.onend = () => {
                     if (isListening) {
                         // Restart if we're still supposed to be listening
-                        recognition.start();
+                        try {
+                            recognition.start();
+                        } catch (error) {
+                            console.error('Error restarting recognition:', error);
+                            isListening = false;
+                        }
                     }
                 };
 
@@ -159,9 +170,9 @@ def init_voice_features():
         }
 
         // Initialize features when the page loads
-        window.addEventListener('load', () => {
+        window.addEventListener('load', async () => {
             console.log('Initializing voice features...');
-            const synthInitialized = initSpeechSynthesis();
+            const synthInitialized = await initSpeechSynthesis();
             const recognitionInitialized = initSpeechRecognition();
             console.log('Voice features initialized:', {
                 synthesis: synthInitialized,
