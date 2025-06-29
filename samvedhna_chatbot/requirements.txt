@@ -14,3 +14,4 @@ SpeechRecognition==3.10.0
 altair==4.2.2
 python-dateutil==2.8.2
 certifi
+PyAudio==0.2.11
