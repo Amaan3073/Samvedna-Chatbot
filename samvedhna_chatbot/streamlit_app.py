@@ -4,8 +4,6 @@ from emotion_detector import detect_emotion
 from translator import translate_response
 from logger import log_message
 from openai import OpenAI
-from voice_output import speak_sync
-from speech_input import listen_from_microphone
 import re
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -16,6 +14,16 @@ import os
 import ssl
 from typing import List, Dict, Any, Optional, Union
 from openai.types.chat import ChatCompletionMessageParam
+import tempfile
+
+# --- Voice Features (Optional) ---
+ENABLE_VOICE_FEATURES = False
+try:
+    from voice_output import speak_sync
+    from speech_input import listen_from_microphone
+    ENABLE_VOICE_FEATURES = True
+except Exception as e:
+    st.warning("Voice features are not available in this environment")
 
 # --- SSL Certificate Fix ---
 # Set SSL certificate path or disable verification for development
@@ -179,9 +187,10 @@ for key, default in {
     "chat_history": [],
     "lang": "english",
     "user_name": None,
-    "tts_enabled": True,
+    "tts_enabled": ENABLE_VOICE_FEATURES,
     "temp_voice_input": "",
-    "show_emotion_analysis": False
+    "show_emotion_analysis": False,
+    "temp_dir": tempfile.mkdtemp()  # Create a temporary directory for file operations
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -193,14 +202,15 @@ with st.sidebar:
     lang = st.radio("🌐 Language", ["English", "Hindi"])
     st.session_state.lang = "hi" if lang == "Hindi" else "english"
 
-    st.session_state.tts_enabled = st.toggle("🔊 Enable Voice Output", value=st.session_state.tts_enabled)
+    if ENABLE_VOICE_FEATURES:
+        st.session_state.tts_enabled = st.toggle("🔊 Enable Voice Output", value=st.session_state.tts_enabled)
 
-    if st.button("🎙️ Speak"):
-        speech_lang = "hi-IN" if st.session_state.lang == "hi" else "en-IN"
-        spoken = listen_from_microphone(speech_lang)
-        if spoken:
-            st.session_state.temp_voice_input = spoken
-            st.info(f"🗣️ You said: {spoken}")
+        if st.button("🎙️ Speak"):
+            speech_lang = "hi-IN" if st.session_state.lang == "hi" else "en-IN"
+            spoken = listen_from_microphone(speech_lang)
+            if spoken:
+                st.session_state.temp_voice_input = spoken
+                st.info(f"🗣️ You said: {spoken}")
 
     if st.button("🧹 Clear Chat"):
         st.session_state.chat_history = []
@@ -276,8 +286,11 @@ if user_input:
         translated = translate_response(reply, st.session_state.lang)
         st.session_state.chat_history.append((user_input, translated))
 
-        if st.session_state.tts_enabled:
-            speak_sync(translated, st.session_state.lang)
+        if st.session_state.tts_enabled and ENABLE_VOICE_FEATURES:
+            try:
+                speak_sync(translated, st.session_state.lang)
+            except Exception as e:
+                st.warning("Voice output failed. Continuing without voice.")
             
     except Exception as e:
         st.error(f"❌ Error generating response: {str(e)}")
@@ -412,3 +425,30 @@ if st.session_state.show_emotion_analysis:
 # Footer
 st.markdown("---")
 st.caption("Built with ❤️ by Amaan Ali")
+
+# --- File Operations ---
+def get_log_path():
+    """Get the path to the log file, using temporary directory in cloud"""
+    if os.getenv('STREAMLIT_CLOUD'):
+        return os.path.join(st.session_state.temp_dir, 'conversation_log.json')
+    return 'conversation_log.json'
+
+def save_log_data(data):
+    """Save log data to file"""
+    try:
+        log_path = get_log_path()
+        with open(log_path, 'w') as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        st.warning(f"Failed to save log data: {str(e)}")
+
+def load_log_data():
+    """Load log data from file"""
+    try:
+        log_path = get_log_path()
+        if os.path.exists(log_path):
+            with open(log_path) as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {"sessions": []}
