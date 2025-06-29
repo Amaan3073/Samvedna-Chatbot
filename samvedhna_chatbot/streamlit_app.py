@@ -212,6 +212,10 @@ if 'initialized' not in st.session_state:
     st.session_state.listening = False
     st.session_state.voice_error = None
 
+# Initialize voice features
+if ENABLE_VOICE_FEATURES:
+    init_voice_features()
+
 # --- Sidebar Settings ---
 with st.sidebar:
     st.header("⚙️ Chat Settings")
