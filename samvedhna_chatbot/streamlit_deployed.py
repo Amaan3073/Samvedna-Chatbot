@@ -346,15 +346,32 @@ if st.session_state.show_emotion_analysis:
         from datetime import datetime
 
         def get_log_data() -> List[Dict[str, Any]]:
+            """Load log data from both temp directory (current session) and main file (previous sessions)"""
+            all_sessions = []
+            
+            # Load previous sessions from main conversation_log.json
+            try:
+                if os.path.exists("conversation_log.json"):
+                    with open("conversation_log.json") as f:
+                        main_data = json.load(f)
+                        all_sessions.extend(main_data.get("sessions", []))
+            except Exception:
+                pass
+            
+            # Load current session from temp directory
             try:
                 log_path = get_log_path()
                 if os.path.exists(log_path):
                     with open(log_path) as f:
-                        data = json.load(f)
-                        return data.get("sessions", [])
+                        temp_data = json.load(f)
+                        temp_sessions = temp_data.get("sessions", [])
+                        # Only add current session if it has messages
+                        if temp_sessions and temp_sessions[-1].get("messages"):
+                            all_sessions.append(temp_sessions[-1])
             except Exception:
                 pass
-            return []
+            
+            return all_sessions
 
         def get_emotion_timeline() -> pd.DataFrame:
             sessions = get_log_data()
