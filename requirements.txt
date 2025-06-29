@@ -1,0 +1,1 @@
+-r samvedhna_chatbot/requirements.txt 

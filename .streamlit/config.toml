@@ -1,0 +1,16 @@
+[server]
+# The main app path relative to the root directory
+headless = true
+enableCORS = false
+
+[browser]
+serverAddress = "0.0.0.0"
+serverPort = 8501
+gatherUsageStats = false
+
+[theme]
+primaryColor = "#7d58eb"
+backgroundColor = "#0f0c29"
+secondaryBackgroundColor = "#1e1e2f"
+textColor = "#ffffff"
+font = "sans serif" 
