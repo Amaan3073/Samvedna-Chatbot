@@ -208,6 +208,15 @@ with st.sidebar:
     current_lang = "Hindi" if st.session_state.lang == "hi" else "English"
     lang = st.radio("🌐 Language", ["English", "Hindi"], index=0 if current_lang == "English" else 1)
     st.session_state.lang = "hi" if lang == "Hindi" else "english"
+    
+    # Debug info (temporary)
+    st.sidebar.info(f"Current lang: {st.session_state.lang}")
+    st.sidebar.info(f"Radio selection: {lang}")
+
+    # Language reset button
+    if st.button("🔄 Reset Language"):
+        st.session_state.lang = "english"
+        st.rerun()
 
     if ENABLE_VOICE_FEATURES:
         st.session_state.tts_enabled = st.toggle("🔊 Enable Voice Output", value=st.session_state.tts_enabled)
