@@ -13,47 +13,79 @@ def init_voice_features():
         let isListening = false;
         let voices = [];
 
-        // Update status display and notify Streamlit
-        function updateStatus(message, isError = false) {
-            const status = document.getElementById('voice-status');
-            if (status) {
-                status.textContent = message;
-                status.style.color = isError ? 'red' : 'green';
-                status.style.marginBottom = '10px';
-                console.log(message);
+        // Safe way to send messages to Streamlit
+        function sendToStreamlit(data) {
+            try {
+                if (window.parent && window.parent.Streamlit) {
+                    window.parent.Streamlit.setComponentValue(data);
+                }
+            } catch (error) {
+                console.error('Error sending message to Streamlit:', error);
             }
-            // Send status to Streamlit
-            if (window.parent.Streamlit) {
-                window.parent.Streamlit.setComponentValue({
+        }
+
+        // Update status display
+        function updateStatus(message, isError = false) {
+            try {
+                const status = document.getElementById('voice-status');
+                if (status) {
+                    status.textContent = message;
+                    status.style.color = isError ? 'red' : 'green';
+                    status.style.marginBottom = '10px';
+                }
+                console.log(message);
+                
+                // Send status to Streamlit
+                sendToStreamlit({
                     type: 'status',
                     message: message,
                     isError: isError
                 });
+            } catch (error) {
+                console.error('Error updating status:', error);
             }
         }
 
         // Check browser compatibility
         function checkBrowserCompatibility() {
-            if (!window.speechSynthesis) {
-                updateStatus('Speech synthesis not supported in this browser', true);
+            try {
+                // Check for speech synthesis
+                if (!('speechSynthesis' in window)) {
+                    updateStatus('Speech synthesis not supported in this browser', true);
+                    return false;
+                }
+
+                // Check for speech recognition
+                if (!('webkitSpeechRecognition' in window)) {
+                    updateStatus('Speech recognition not supported in this browser', true);
+                    return false;
+                }
+
+                return true;
+            } catch (error) {
+                updateStatus('Error checking browser compatibility: ' + error.message, true);
                 return false;
             }
-            if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
-                updateStatus('Speech recognition not supported in this browser', true);
-                return false;
-            }
-            return true;
         }
 
         // Request microphone permission
         async function requestMicrophonePermission() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                stream.getTracks().forEach(track => track.stop()); // Stop the stream after permission check
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: true,
+                    video: false
+                });
+                stream.getTracks().forEach(track => track.stop());
                 updateStatus('Microphone permission granted');
                 return true;
             } catch (error) {
-                updateStatus('Microphone permission denied: ' + error.message, true);
+                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                    updateStatus('Please allow microphone access to use voice input', true);
+                } else if (error.name === 'NotFoundError') {
+                    updateStatus('No microphone found. Please connect a microphone and try again', true);
+                } else {
+                    updateStatus('Microphone error: ' + error.message, true);
+                }
                 return false;
             }
         }
@@ -84,7 +116,7 @@ def init_voice_features():
                                 attempts++;
                                 setTimeout(checkVoices, 500);
                             } else {
-                                updateStatus('No voices available after multiple attempts', true);
+                                updateStatus('No voices available. Speech output may not work', true);
                                 resolve(false);
                             }
                         };
@@ -92,6 +124,7 @@ def init_voice_features():
                         checkVoices();
                     });
                 }
+
                 updateStatus('Speech synthesis initialized with ' + voices.length + ' voices');
                 return true;
             } catch (error) {
@@ -103,15 +136,17 @@ def init_voice_features():
         // Initialize speech recognition
         function initSpeechRecognition() {
             try {
-                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                const SpeechRecognition = window.webkitSpeechRecognition;
                 if (!SpeechRecognition) {
                     updateStatus('Speech recognition not supported', true);
                     return false;
                 }
+
                 recognition = new SpeechRecognition();
                 recognition.continuous = true;
                 recognition.interimResults = true;
                 recognition.maxAlternatives = 1;
+
                 updateStatus('Speech recognition initialized');
                 return true;
             } catch (error) {
@@ -214,7 +249,7 @@ def init_voice_features():
                     isListening = true;
                     updateStatus('Listening...');
                     console.log('Recognition started');
-                    window.parent.Streamlit.setComponentValue({
+                    sendToStreamlit({
                         type: 'transcript',
                         text: ''
                     });
@@ -225,7 +260,7 @@ def init_voice_features():
                         .map(result => result[0].transcript)
                         .join(' ');
                     console.log('Transcript:', transcript);
-                    window.parent.Streamlit.setComponentValue({
+                    sendToStreamlit({
                         type: 'transcript',
                         text: transcript
                     });
@@ -236,7 +271,7 @@ def init_voice_features():
                     const errorMsg = 'Recognition error: ' + event.error;
                     updateStatus(errorMsg, true);
                     console.error(errorMsg);
-                    window.parent.Streamlit.setComponentValue({
+                    sendToStreamlit({
                         type: 'transcript',
                         text: 'ERROR: ' + event.error
                     });
@@ -268,7 +303,7 @@ def init_voice_features():
                 const errorMsg = 'Error in startListening: ' + error.message;
                 updateStatus(errorMsg, true);
                 console.error(errorMsg);
-                window.parent.Streamlit.setComponentValue({
+                sendToStreamlit({
                     type: 'transcript',
                     text: 'ERROR: ' + error.message
                 });
@@ -293,39 +328,49 @@ def init_voice_features():
 
         // Initialize features when the page loads
         window.addEventListener('load', async () => {
-            updateStatus('Initializing voice features...');
-            console.log('Voice features initialization started');
-            
-            // Check browser compatibility
-            if (!checkBrowserCompatibility()) {
-                return;
-            }
+            try {
+                updateStatus('Initializing voice features...');
+                console.log('Voice features initialization started');
+                
+                // Check browser compatibility
+                if (!checkBrowserCompatibility()) {
+                    return;
+                }
 
-            // Initialize features
-            const synthInitialized = await initSpeechSynthesis();
-            const recognitionInitialized = initSpeechRecognition();
-            
-            const status = 'Voice features initialized: ' + 
-                        'synthesis=' + (synthInitialized ? 'yes' : 'no') + ', ' +
-                        'recognition=' + (recognitionInitialized ? 'yes' : 'no');
-            updateStatus(status);
-            console.log(status);
+                // Initialize features
+                const synthInitialized = await initSpeechSynthesis();
+                const recognitionInitialized = initSpeechRecognition();
+                
+                const status = 'Voice features initialized: ' + 
+                            'synthesis=' + (synthInitialized ? 'yes' : 'no') + ', ' +
+                            'recognition=' + (recognitionInitialized ? 'yes' : 'no');
+                updateStatus(status);
+                console.log(status);
+            } catch (error) {
+                const errorMsg = 'Error during initialization: ' + error.message;
+                updateStatus(errorMsg, true);
+                console.error(errorMsg);
+            }
         });
 
         // Listen for messages from Streamlit
         window.addEventListener('message', function(event) {
-            console.log('Received message:', event.data);
-            switch (event.data.type) {
-                case 'speak':
-                    speakText(event.data.text, event.data.lang)
-                        .catch(error => console.error('Speech failed:', error));
-                    break;
-                case 'start-listen':
-                    startListening(event.data.lang);
-                    break;
-                case 'stop-listen':
-                    stopListening();
-                    break;
+            try {
+                console.log('Received message:', event.data);
+                switch (event.data.type) {
+                    case 'speak':
+                        speakText(event.data.text, event.data.lang)
+                            .catch(error => console.error('Speech failed:', error));
+                        break;
+                    case 'start-listen':
+                        startListening(event.data.lang);
+                        break;
+                    case 'stop-listen':
+                        stopListening();
+                        break;
+                }
+            } catch (error) {
+                console.error('Error handling message:', error);
             }
         });
         </script>
@@ -338,12 +383,16 @@ def speak_browser(text: str, lang: str = 'english'):
     components.html(
         f"""
         <script>
-        // Send the speak message
-        window.parent.postMessage({{
-            type: 'speak',
-            text: {repr(text)},
-            lang: {repr('hi' if lang == 'hi' else 'en')}
-        }}, '*');
+        try {{
+            // Send the speak message
+            window.parent.postMessage({{
+                type: 'speak',
+                text: {repr(text)},
+                lang: {repr('hi' if lang == 'hi' else 'en')}
+            }}, '*');
+        }} catch (error) {{
+            console.error('Error in speak_browser:', error);
+        }}
         </script>
         """,
         height=0
@@ -356,11 +405,15 @@ def listen_browser(lang: str = 'english'):
     components.html(
         f"""
         <script>
-        // Send the start-listen message
-        window.parent.postMessage({{
-            type: 'start-listen',
-            lang: {repr('hi' if lang == 'hi' else 'en')}
-        }}, '*');
+        try {{
+            // Send the start-listen message
+            window.parent.postMessage({{
+                type: 'start-listen',
+                lang: {repr('hi' if lang == 'hi' else 'en')}
+            }}, '*');
+        }} catch (error) {{
+            console.error('Error in listen_browser:', error);
+        }}
         </script>
         """,
         height=0
