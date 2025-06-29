@@ -343,10 +343,13 @@ if st.session_state.show_emotion_analysis:
 
         def get_log_data() -> List[Dict[str, Any]]:
             try:
-                with open("conversation_log.json") as f:
-                    return json.load(f).get("sessions", [])
+                log_path = get_log_path()  # Use the same path as update_conversation_log
+                if os.path.exists(log_path):
+                    with open(log_path) as f:
+                        return json.load(f).get("sessions", [])
             except:
                 return []
+            return []
 
         def get_emotion_timeline() -> pd.DataFrame:
             sessions = get_log_data()
