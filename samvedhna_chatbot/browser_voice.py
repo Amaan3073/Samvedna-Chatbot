@@ -1,5 +1,6 @@
 import streamlit as st
 import streamlit.components.v1 as components
+import uuid
 
 def init_voice_features():
     """Initialize browser-based voice features"""
@@ -7,20 +8,23 @@ def init_voice_features():
         """
         <script>
         // Initialize speech synthesis
-        const synth = window.speechSynthesis;
+        let synth = window.speechSynthesis;
+        let recognition = null;
         
-        // Initialize speech recognition
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SpeechRecognition) {
-            console.error('Speech recognition not supported');
+        // Function to handle speech synthesis
+        function speakText(text, lang) {
+            if (synth.speaking) {
+                synth.cancel();
+            }
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = lang === 'hi' ? 'hi-IN' : 'en-US';
+            synth.speak(utterance);
         }
-        
+
         // Listen for messages from Streamlit
         window.addEventListener('message', function(event) {
             if (event.data.type === 'speak') {
-                const utterance = new SpeechSynthesisUtterance(event.data.text);
-                utterance.lang = event.data.lang === 'hi' ? 'hi-IN' : 'en-US';
-                synth.speak(utterance);
+                speakText(event.data.text, event.data.lang);
             }
         });
         </script>
@@ -30,6 +34,8 @@ def init_voice_features():
 
 def speak_browser(text: str, lang: str = 'english'):
     """Speak text using browser's speech synthesis"""
+    # Generate a unique key for this component
+    key = f"speak_{str(uuid.uuid4())}"
     components.html(
         f"""
         <script>
@@ -45,31 +51,57 @@ def speak_browser(text: str, lang: str = 'english'):
 
 def listen_browser(lang: str = 'english'):
     """Start browser-based speech recognition"""
+    # Create a container for the transcript
     transcript_container = st.empty()
     
+    # Generate a unique key for this component
+    key = f"listen_{str(uuid.uuid4())}"
+    
+    # Create a component to handle speech recognition
     components.html(
         f"""
-        <div>
-            <button onclick="startListening()" style="display: none;">Start</button>
-        </div>
         <script>
-        const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-        recognition.lang = {repr('hi-IN' if lang == 'hi' else 'en-US')};
-        recognition.continuous = false;
-        recognition.interimResults = false;
-        
-        recognition.onresult = (event) => {{
-            const transcript = event.results[0][0].transcript;
-            window.parent.Streamlit.setComponentValue(transcript);
-        }};
-        
-        recognition.onerror = (event) => {{
-            console.error('Speech recognition error:', event.error);
-            window.parent.Streamlit.setComponentValue('ERROR: ' + event.error);
-        }};
-        
-        // Start recognition automatically
-        recognition.start();
+        // Function to handle speech recognition messages
+        function setupSpeechRecognition() {{
+            try {{
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (!SpeechRecognition) {{
+                    window.parent.Streamlit.setComponentValue('ERROR: Speech recognition not supported in this browser');
+                    return;
+                }}
+
+                const recognition = new SpeechRecognition();
+                recognition.lang = {repr('hi-IN' if lang == 'hi' else 'en-US')};
+                recognition.continuous = false;
+                recognition.interimResults = true;
+
+                recognition.onresult = (event) => {{
+                    const transcript = event.results[0][0].transcript;
+                    window.parent.Streamlit.setComponentValue(transcript);
+                }};
+
+                recognition.onerror = (event) => {{
+                    console.error('Speech recognition error:', event.error);
+                    window.parent.Streamlit.setComponentValue('ERROR: ' + event.error);
+                }};
+
+                recognition.onend = () => {{
+                    // Restart recognition if still listening
+                    if (window.isListening) {{
+                        recognition.start();
+                    }}
+                }};
+
+                window.isListening = true;
+                recognition.start();
+            }} catch (error) {{
+                console.error('Error setting up speech recognition:', error);
+                window.parent.Streamlit.setComponentValue('ERROR: ' + error.message);
+            }}
+        }}
+
+        // Start speech recognition when the component loads
+        setupSpeechRecognition();
         </script>
         """,
         height=0
