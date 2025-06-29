@@ -200,19 +200,17 @@ except Exception as e:
     client = None
 
 # --- Session State Init ---
-for key, default in {
-    "chat_history": [],
-    "lang": "english",
-    "user_name": None,
-    "tts_enabled": ENABLE_VOICE_FEATURES,
-    "voice_input": "",  # Changed from temp_voice_input
-    "show_emotion_analysis": False,
-    "temp_dir": tempfile.mkdtemp(),
-    "listening": False,
-    "voice_error": None
-}.items():
-    if key not in st.session_state:
-        st.session_state[key] = default
+if 'initialized' not in st.session_state:
+    st.session_state.initialized = True
+    st.session_state.chat_history = []
+    st.session_state.lang = "english"
+    st.session_state.user_name = None
+    st.session_state.tts_enabled = ENABLE_VOICE_FEATURES
+    st.session_state.voice_input = ""
+    st.session_state.show_emotion_analysis = False
+    st.session_state.temp_dir = tempfile.mkdtemp()
+    st.session_state.listening = False
+    st.session_state.voice_error = None
 
 # --- Sidebar Settings ---
 with st.sidebar:
@@ -230,15 +228,10 @@ with st.sidebar:
                 st.session_state.listening = not st.session_state.listening
                 if st.session_state.listening:
                     st.session_state.voice_error = None
+                    st.session_state.voice_input = ""
                     transcript_container = listen_browser(st.session_state.lang)
-                    # Display the transcript in real-time
                     if transcript_container is not None:
-                        transcript_container.text_area("Voice Input", value=st.session_state.voice_input, disabled=True)
-                else:
-                    # When stopping, if we have voice input, use it
-                    if st.session_state.voice_input and not st.session_state.voice_input.startswith("ERROR:"):
-                        user_input = st.session_state.voice_input
-                        st.session_state.voice_input = ""
+                        transcript_container.text_area("Voice Input", value=st.session_state.voice_input or "", disabled=True)
         
         with col2:
             if st.button("🗑️ Clear", use_container_width=True):
@@ -290,9 +283,6 @@ st.caption("Empathetic multilingual chatbot powered by Emotion Detection + LLM")
 
 # --- User Input Box
 user_input = st.chat_input("Type your message...")
-if st.session_state.voice_input:
-    user_input = st.session_state.voice_input
-    st.session_state.voice_input = ""
 
 # --- Chat Logic
 if user_input or (st.session_state.voice_input and not st.session_state.voice_input.startswith("ERROR:")):
