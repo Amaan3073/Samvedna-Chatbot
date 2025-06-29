@@ -354,9 +354,17 @@ if st.session_state.show_emotion_analysis:
                 if os.path.exists("conversation_log.json"):
                     with open("conversation_log.json") as f:
                         main_data = json.load(f)
-                        all_sessions.extend(main_data.get("sessions", []))
-            except Exception:
-                pass
+                        main_sessions = main_data.get("sessions", [])
+                        # Convert old format to new format if needed
+                        for session in main_sessions:
+                            if "messages" in session:
+                                for msg in session["messages"]:
+                                    # Convert old 'message' field to 'text' field
+                                    if "message" in msg and "text" not in msg:
+                                        msg["text"] = msg["message"]
+                        all_sessions.extend(main_sessions)
+            except Exception as e:
+                st.sidebar.error(f"Error loading main log: {str(e)}")
             
             # Load current session from temp directory
             try:
@@ -368,8 +376,14 @@ if st.session_state.show_emotion_analysis:
                         # Only add current session if it has messages
                         if temp_sessions and temp_sessions[-1].get("messages"):
                             all_sessions.append(temp_sessions[-1])
-            except Exception:
-                pass
+            except Exception as e:
+                st.sidebar.error(f"Error loading temp log: {str(e)}")
+            
+            # Debug info
+            st.sidebar.info(f"Loaded {len(all_sessions)} sessions total")
+            for i, session in enumerate(all_sessions):
+                msg_count = len(session.get("messages", []))
+                st.sidebar.info(f"Session {i+1}: {msg_count} messages")
             
             return all_sessions
 
@@ -397,7 +411,11 @@ if st.session_state.show_emotion_analysis:
             sessions = get_log_data()
             labels, scores = [], []
             for i, session in enumerate(sessions):
-                mood = [score_map.get(m["emotion"], 0) for m in session.get("messages", [])]
+                mood = []
+                for m in session.get("messages", []):
+                    # Handle both old and new message formats
+                    emotion = m.get("emotion", "neutral")
+                    mood.append(score_map.get(emotion, 0))
                 if mood:
                     labels.append(f"Session {i+1}")
                     scores.append(round(sum(mood) / len(mood), 2))
