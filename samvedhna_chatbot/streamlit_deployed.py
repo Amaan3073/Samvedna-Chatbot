@@ -27,10 +27,9 @@ def save_log_data(data):
         log_path = get_log_path()
         with open(log_path, 'w') as f:
             json.dump(data, f, indent=2)
-        st.session_state.last_save_time = datetime.now().isoformat()  # Track last save
-    except Exception as e:
-        st.error(f"Failed to save log data: {str(e)}")
-        st.error(f"Attempted to save to: {log_path}")
+        st.session_state.last_save_time = datetime.now().isoformat()
+    except Exception:
+        pass
 
 def load_log_data():
     """Load log data from file"""
@@ -67,13 +66,8 @@ def update_conversation_log(user_input: str, emotion: str, score: float, lang: s
         
         # Save updated log data
         save_log_data(log_data)
-        
-        # Debug info
-        st.sidebar.info(f"💾 Last save: {st.session_state.last_save_time}")
-        
-    except Exception as e:
-        st.error(f"Failed to update conversation log: {str(e)}")
-        st.error(f"Log path: {get_log_path()}")
+    except Exception:
+        pass
 
 # --- SSL Certificate Fix ---
 # Set SSL certificate path or disable verification for development
@@ -251,7 +245,6 @@ for key, default in {
 # Initialize conversation log file in temp directory
 if not os.path.exists(get_log_path()):
     save_log_data({"sessions": []})
-    st.info(f"📝 Initialized conversation log in temporary directory: {st.session_state.temp_dir}")
 
 # --- Sidebar Settings ---
 with st.sidebar:
@@ -354,16 +347,13 @@ if st.session_state.show_emotion_analysis:
 
         def get_log_data() -> List[Dict[str, Any]]:
             try:
-                log_path = get_log_path()  # Use the same path as update_conversation_log
+                log_path = get_log_path()
                 if os.path.exists(log_path):
                     with open(log_path) as f:
                         data = json.load(f)
-                        st.sidebar.success(f"📊 Successfully loaded log data from: {log_path}")
                         return data.get("sessions", [])
-                else:
-                    st.warning(f"Log file not found at: {log_path}")
-            except Exception as e:
-                st.error(f"Error loading log data: {str(e)}")
+            except Exception:
+                pass
             return []
 
         def get_emotion_timeline() -> pd.DataFrame:
