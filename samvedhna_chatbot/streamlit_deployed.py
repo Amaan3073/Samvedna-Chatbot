@@ -43,7 +43,13 @@ def load_log_data():
     return {"sessions": []}
 
 def update_conversation_log(user_input: str, emotion: str, score: float, lang: str):
-    """Update the conversation log with new message"""
+    """
+    Update the conversation log with new message
+    :param user_input: The user's input text
+    :param emotion: Detected emotion
+    :param score: Emotion confidence score
+    :param lang: Language code ('en' for English, 'hi' for Hindi)
+    """
     try:
         log_data = load_log_data()
         
@@ -60,7 +66,7 @@ def update_conversation_log(user_input: str, emotion: str, score: float, lang: s
             "text": user_input,
             "emotion": emotion,
             "score": score,
-            "lang": lang,
+            "lang": lang,  # Will be 'en' or 'hi'
             "timestamp": datetime.now().isoformat()
         })
         
@@ -234,7 +240,7 @@ except Exception as e:
 # --- Session State Init ---
 for key, default in {
     "chat_history": [],
-    "lang": "english",
+    "lang": "en",  # Use standard language code 'en' for English
     "user_name": None,
     "show_emotion_analysis": False,
     "temp_dir": tempfile.mkdtemp()  # Create a temporary directory for file operations
@@ -251,26 +257,19 @@ with st.sidebar:
     st.header("⚙️ Chat Settings")
 
     # Language selection with proper state management
-    current_lang = "Hindi" if st.session_state.lang == "hi" else "English"
-    lang = st.radio("🌐 Language", ["English", "Hindi"], index=0 if current_lang == "English" else 1)
-    st.session_state.lang = "hi" if lang == "Hindi" else "english"
+    lang_options = {"English": "en", "Hindi": "hi"}
+    display_lang = "Hindi" if st.session_state.lang == "hi" else "English"
     
-    # Debug info (temporary)
-    st.sidebar.info(f"Current lang: {st.session_state.lang}")
-    st.sidebar.info(f"Radio selection: {lang}")
-
-    # Language reset button
-    if st.button("🔄 Reset Language"):
-        st.session_state.lang = "english"
-        st.rerun()
-
-    # Voice output toggle
-    voice_output_enabled = st.toggle("🔊 Enable Voice Output", value=False)
-    if voice_output_enabled:
-        st.info("🔔 Voice output feature is only available in the local version.")
-
-    if st.button("🎙️ Speak"):
-        st.info("🔔 Voice input feature is only available in the local version.")
+    selected_lang = st.radio(
+        "🌐 Language",
+        options=list(lang_options.keys()),
+        index=list(lang_options.keys()).index(display_lang)
+    )
+    
+    # Only update if there's an actual change
+    if lang_options[selected_lang] != st.session_state.lang:
+        st.session_state.lang = lang_options[selected_lang]
+        st.rerun()  # Rerun only when language actually changes
 
     if st.button("🧹 Clear Chat"):
         st.session_state.chat_history = []
