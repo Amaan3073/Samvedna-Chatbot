@@ -2,7 +2,7 @@
 import streamlit as st
 from emotion_detector import detect_emotion
 from translator import translate_response
-from logger import log_message
+from logger import log_message, get_log_data
 from openai import OpenAI
 import re
 import pandas as pd
@@ -279,18 +279,11 @@ if not st.session_state.show_emotion_analysis:
             st.markdown(f"<div class='chat-container'><div class='chat-message chat-user'>{user_msg}</div></div>", unsafe_allow_html=True)
             st.markdown(f"<div class='chat-container'><div class='chat-message chat-bot'>{bot_msg}</div></div>", unsafe_allow_html=True)
 
-# 📊 Emotion Analysis Section
+# --- Chat Analysis Section
 if st.session_state.show_emotion_analysis:
     try:
         from collections import Counter
         from datetime import datetime
-
-        def get_log_data() -> List[Dict[str, Any]]:
-            try:
-                with open("conversation_log.json") as f:
-                    return json.load(f).get("sessions", [])
-            except:
-                return []
 
         def get_emotion_timeline() -> pd.DataFrame:
             sessions = get_log_data()
@@ -400,30 +393,3 @@ if st.session_state.show_emotion_analysis:
 # Footer
 st.markdown("---")
 st.caption("Built with ❤️ by Amaan Ali")
-
-# --- File Operations ---
-def get_log_path():
-    """Get the path to the log file, using temporary directory in cloud"""
-    if os.getenv('STREAMLIT_CLOUD'):
-        return os.path.join(st.session_state.temp_dir, 'conversation_log.json')
-    return 'conversation_log.json'
-
-def save_log_data(data):
-    """Save log data to file"""
-    try:
-        log_path = get_log_path()
-        with open(log_path, 'w') as f:
-            json.dump(data, f, indent=2)
-    except Exception as e:
-        st.warning(f"Failed to save log data: {str(e)}")
-
-def load_log_data():
-    """Load log data from file"""
-    try:
-        log_path = get_log_path()
-        if os.path.exists(log_path):
-            with open(log_path) as f:
-                return json.load(f)
-    except Exception:
-        pass
-    return {"sessions": []}
