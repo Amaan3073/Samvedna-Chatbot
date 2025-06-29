@@ -1,6 +1,5 @@
 # Place at the top of the file
 import streamlit as st
-import streamlit.components.v1 as components
 from emotion_detector import detect_emotion
 from translator import translate_response
 from logger import log_message
@@ -16,10 +15,15 @@ import ssl
 from typing import List, Dict, Any, Optional, Union
 from openai.types.chat import ChatCompletionMessageParam
 import tempfile
-from browser_voice import init_voice_features, speak_browser, listen_browser
 
-# --- Voice Features (Browser-based) ---
-ENABLE_VOICE_FEATURES = True
+# --- Voice Features (Optional) ---
+ENABLE_VOICE_FEATURES = False
+try:
+    from voice_output import speak_sync
+    from speech_input import listen_from_microphone
+    ENABLE_VOICE_FEATURES = True
+except Exception as e:
+    st.warning("Voice features are not available in this environment")
 
 # --- SSL Certificate Fix ---
 # Set SSL certificate path or disable verification for development
@@ -37,10 +41,6 @@ st.set_page_config(
     page_icon="🧠",
     layout="wide"
 )
-
-# Initialize voice features after page config
-if ENABLE_VOICE_FEATURES:
-    init_voice_features()
 
 # --- Custom CSS Styling (Gradient Background & Bubbles) ---
 st.markdown("""
@@ -170,31 +170,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Add transcript handler component
-components.html(
-    """
-    <script>
-    // Handle messages from the voice component
-    window.addEventListener('message', function(event) {
-        if (event.data.type === 'transcript') {
-            // Update transcript
-            window.parent.Streamlit.setComponentValue({
-                type: 'transcript',
-                text: event.data.text
-            });
-        } else if (event.data.type === 'status') {
-            // Update status
-            window.parent.Streamlit.setComponentValue({
-                type: 'status',
-                message: event.data.message,
-                isError: event.data.isError
-            });
-        }
-    });
-    </script>
-    """,
-    height=0
-)
 
 # --- OpenRouter client setup ---
 try:
@@ -208,25 +183,17 @@ except Exception as e:
     client = None
 
 # --- Session State Init ---
-if 'initialized' not in st.session_state:
-    st.session_state.initialized = True
-    st.session_state.chat_history = []
-    st.session_state.lang = "english"
-    st.session_state.user_name = None
-    st.session_state.tts_enabled = ENABLE_VOICE_FEATURES
-    st.session_state.voice_input = ""
-    st.session_state.show_emotion_analysis = False
-    st.session_state.temp_dir = tempfile.mkdtemp()
-    st.session_state.listening = False
-    st.session_state.voice_error = None
-    st.session_state.transcript_container = None
-    st.session_state.voice_initialized = False
-    st.session_state.voice_status = None
-
-# Initialize voice features
-if ENABLE_VOICE_FEATURES and not st.session_state.voice_initialized:
-    init_voice_features()
-    st.session_state.voice_initialized = True
+for key, default in {
+    "chat_history": [],
+    "lang": "english",
+    "user_name": None,
+    "tts_enabled": ENABLE_VOICE_FEATURES,
+    "temp_voice_input": "",
+    "show_emotion_analysis": False,
+    "temp_dir": tempfile.mkdtemp()  # Create a temporary directory for file operations
+}.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
 
 # --- Sidebar Settings ---
 with st.sidebar:
@@ -236,75 +203,14 @@ with st.sidebar:
     st.session_state.lang = "hi" if lang == "Hindi" else "english"
 
     if ENABLE_VOICE_FEATURES:
-        st.divider()
-        st.subheader("🎙️ Voice Features")
-        
-        # Show voice feature status
-        if st.session_state.voice_status:
-            if isinstance(st.session_state.voice_status, dict):
-                if st.session_state.voice_status.get('type') == 'status':
-                    message = st.session_state.voice_status.get('message', '')
-                    is_error = st.session_state.voice_status.get('isError', False)
-                    if is_error:
-                        st.error(message)
-                    else:
-                        st.info(message)
-                elif st.session_state.voice_status.get('type') == 'transcript':
-                    text = st.session_state.voice_status.get('text', '')
-                    if text:
-                        if text.startswith('ERROR:'):
-                            st.error(text)
-                        else:
-                            st.session_state.voice_input = text
-            else:
-                st.info(st.session_state.voice_status)
-        
         st.session_state.tts_enabled = st.toggle("🔊 Enable Voice Output", value=st.session_state.tts_enabled)
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🎙️ Start" if not st.session_state.listening else "🛑 Stop", use_container_width=True):
-                st.session_state.listening = not st.session_state.listening
-                if st.session_state.listening:
-                    st.session_state.voice_error = None
-                    st.session_state.voice_input = ""
-                    st.session_state.transcript_container = listen_browser(st.session_state.lang)
-                else:
-                    # Send stop message to browser
-                    components.html(
-                        """
-                        <script>
-                        window.parent.postMessage({
-                            type: 'stop-listen'
-                        }, '*');
-                        </script>
-                        """,
-                        height=0
-                    )
-                    st.session_state.transcript_container = None
-                    st.rerun()  # Force a rerun to update UI
-        
-        with col2:
-            if st.button("🗑️ Clear", use_container_width=True):
-                st.session_state.voice_input = ""
-                st.session_state.voice_error = None
-                if st.session_state.transcript_container:
-                    st.session_state.transcript_container.empty()
-                st.rerun()  # Force a rerun to update UI
-        
-        # Show voice input status
-        if st.session_state.listening:
-            st.info("🎙️ Listening... Click Stop when done.")
-            if st.session_state.transcript_container:
-                st.session_state.transcript_container.text_area("Voice Input", value=st.session_state.voice_input or "", disabled=True, key="voice_input_area")
-        elif st.session_state.voice_error:
-            st.error(f"❌ {st.session_state.voice_error}")
-        elif st.session_state.voice_input:
-            if st.session_state.voice_input.startswith("ERROR:"):
-                st.error(st.session_state.voice_input)
-            else:
-                st.success("✅ Voice input received!")
-                st.text_area("Transcript", value=st.session_state.voice_input, disabled=True, key="transcript_area")
+
+        if st.button("🎙️ Speak"):
+            speech_lang = "hi-IN" if st.session_state.lang == "hi" else "en-IN"
+            spoken = listen_from_microphone(speech_lang)
+            if spoken:
+                st.session_state.temp_voice_input = spoken
+                st.info(f"🗣️ You said: {spoken}")
 
     if st.button("🧹 Clear Chat"):
         st.session_state.chat_history = []
@@ -339,66 +245,57 @@ st.caption("Empathetic multilingual chatbot powered by Emotion Detection + LLM")
 
 # --- User Input Box
 user_input = st.chat_input("Type your message...")
+if st.session_state.temp_voice_input:
+    user_input = st.session_state.temp_voice_input
+    st.session_state.temp_voice_input = ""
 
 # --- Chat Logic
-if user_input or (st.session_state.voice_input and not st.session_state.voice_input.startswith("ERROR:")):
-    # Use voice input if available and valid
-    current_input: str = ""
-    if st.session_state.voice_input and not st.session_state.voice_input.startswith("ERROR:"):
-        current_input = str(st.session_state.voice_input)
-        st.session_state.voice_input = ""
-        if st.session_state.transcript_container:
-            st.session_state.transcript_container.empty()
-        st.rerun()  # Force a rerun to update UI
-    else:
-        current_input = str(user_input) if user_input else ""
+if user_input:
+    extract_name(user_input)
+    emotion, score = detect_emotion(user_input)
+    log_message(user_input, emotion, score, st.session_state.lang)
 
-    if current_input:
-        extract_name(current_input)
-        emotion, score = detect_emotion(current_input)
-        log_message(current_input, emotion, score, st.session_state.lang)
+    prompt = user_input
+    if st.session_state.user_name:
+        prompt = f"My name is {st.session_state.user_name}. {prompt}"
+    if emotion not in ["neutral", "greeting"]:
+        prompt = f"[EMOTION: {emotion.upper()}]\n{prompt}"
 
-        prompt = current_input
-        if st.session_state.user_name:
-            prompt = f"My name is {st.session_state.user_name}. {prompt}"
-        if emotion not in ["neutral", "greeting"]:
-            prompt = f"[EMOTION: {emotion.upper()}]\n{prompt}"
+    messages: List[ChatCompletionMessageParam] = [
+        {"role": "system", "content": "You are a helpful and empathetic assistant named Samvedhna created by Amaan Ali. If the user shares their name, remember it and use it in future replies.Otherwise reply normally without name. Adjust your tone gently based on the user's emotion if it is clearly expressed. Otherwise, respond neutrally and kindly."}
+    ]
+    for u, b in st.session_state.chat_history:
+        messages.append({"role": "user", "content": u})
+        messages.append({"role": "assistant", "content": b})
+    messages.append({"role": "user", "content": prompt})
 
-        messages: List[ChatCompletionMessageParam] = [
-            {"role": "system", "content": "You are a helpful and empathetic assistant named Samvedhna created by Amaan Ali. If the user shares their name, remember it and use it in future replies.Otherwise reply normally without name. Adjust your tone gently based on the user's emotion if it is clearly expressed. Otherwise, respond neutrally and kindly."}
-        ]
-        for u, b in st.session_state.chat_history:
-            messages.append({"role": "user", "content": str(u)})
-            messages.append({"role": "assistant", "content": str(b)})
-        messages.append({"role": "user", "content": str(prompt)})
+    try:
+        if client is None:
+            st.error("❌ OpenAI client not initialized. Please check your API configuration.")
+            reply = "I'm sorry, but I'm having trouble connecting to my AI service. Please check your API key configuration."
+        else:
+            response = client.chat.completions.create(
+                model="mistralai/mistral-7b-instruct",
+                messages=messages,
+                temperature=0.7,
+                max_tokens=200
+            )
+            message_content = response.choices[0].message.content
+            reply = message_content.strip() if message_content else "I'm sorry, I couldn't generate a response."
+        
+        translated = translate_response(reply, st.session_state.lang)
+        st.session_state.chat_history.append((user_input, translated))
 
-        try:
-            if client is None:
-                st.error("❌ OpenAI client not initialized. Please check your API configuration.")
-                reply = "I'm sorry, but I'm having trouble connecting to my AI service. Please check your API key configuration."
-            else:
-                response = client.chat.completions.create(
-                    model="mistralai/mistral-7b-instruct",
-                    messages=messages,
-                    temperature=0.7,
-                    max_tokens=200
-                )
-                message_content = response.choices[0].message.content
-                reply = message_content.strip() if message_content else "I'm sorry, I couldn't generate a response."
+        if st.session_state.tts_enabled and ENABLE_VOICE_FEATURES:
+            try:
+                speak_sync(translated, st.session_state.lang)
+            except Exception as e:
+                st.warning("Voice output failed. Continuing without voice.")
             
-            translated = translate_response(reply, st.session_state.lang)
-            st.session_state.chat_history.append((current_input, translated))
-
-            if st.session_state.tts_enabled and ENABLE_VOICE_FEATURES:
-                try:
-                    speak_browser(translated, st.session_state.lang)
-                except Exception as e:
-                    st.warning(f"Voice output failed: {str(e)}")
-                
-        except Exception as e:
-            st.error(f"❌ Error generating response: {str(e)}")
-            error_reply = "I'm sorry, but I encountered an error while processing your request. Please try again."
-            st.session_state.chat_history.append((current_input, error_reply))
+    except Exception as e:
+        st.error(f"❌ Error generating response: {str(e)}")
+        error_reply = "I'm sorry, but I encountered an error while processing your request. Please try again."
+        st.session_state.chat_history.append((user_input, error_reply))
 
 # --- Chat Display (dynamic & reversed)
 if not st.session_state.show_emotion_analysis:
