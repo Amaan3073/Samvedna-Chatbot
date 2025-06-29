@@ -1,5 +1,6 @@
 # Place at the top of the file
 import streamlit as st
+import streamlit.components.v1 as components
 from emotion_detector import detect_emotion
 from translator import translate_response
 from logger import log_message
@@ -19,7 +20,6 @@ from browser_voice import init_voice_features, speak_browser, listen_browser
 
 # --- Voice Features (Browser-based) ---
 ENABLE_VOICE_FEATURES = True
-init_voice_features()
 
 # --- SSL Certificate Fix ---
 # Set SSL certificate path or disable verification for development
@@ -37,6 +37,10 @@ st.set_page_config(
     page_icon="🧠",
     layout="wide"
 )
+
+# Initialize voice features after page config
+if ENABLE_VOICE_FEATURES:
+    init_voice_features()
 
 # --- Custom CSS Styling (Gradient Background & Bubbles) ---
 st.markdown("""
@@ -166,6 +170,23 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# Add transcript handler component
+components.html(
+    """
+    <script>
+    // Handle transcript updates from the voice component
+    window.addEventListener('message', function(event) {
+        if (event.data.type === 'update-transcript') {
+            // Use Streamlit's setComponentValue to update the session state
+            if (window.parent.Streamlit) {
+                window.parent.Streamlit.setComponentValue(event.data.value);
+            }
+        }
+    });
+    </script>
+    """,
+    height=0
+)
 
 # --- OpenRouter client setup ---
 try:
@@ -187,7 +208,8 @@ for key, default in {
     "temp_voice_input": "",
     "show_emotion_analysis": False,
     "temp_dir": tempfile.mkdtemp(),  # Create a temporary directory for file operations
-    "listening": False  # New state for tracking speech input status
+    "listening": False,  # New state for tracking speech input status
+    "voice_error": None  # New state for tracking voice errors
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -201,15 +223,29 @@ with st.sidebar:
 
     if ENABLE_VOICE_FEATURES:
         st.session_state.tts_enabled = st.toggle("🔊 Enable Voice Output", value=st.session_state.tts_enabled)
-
-        if st.button("🎙️ Start Speaking" if not st.session_state.listening else "🛑 Stop Speaking"):
-            st.session_state.listening = not st.session_state.listening
-            if st.session_state.listening:
-                speech_lang = "hi" if st.session_state.lang == "hi" else "english"
-                transcript_placeholder = listen_browser(speech_lang)
-                st.session_state.temp_voice_input = transcript_placeholder
-            else:
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🎙️ Start" if not st.session_state.listening else "🛑 Stop", use_container_width=True):
+                st.session_state.listening = not st.session_state.listening
+                if st.session_state.listening:
+                    st.session_state.voice_error = None
+                    st.session_state.temp_voice_input = listen_browser(st.session_state.lang)
+                else:
+                    st.session_state.temp_voice_input = ""
+        
+        with col2:
+            if st.button("🗑️ Clear", use_container_width=True):
                 st.session_state.temp_voice_input = ""
+                st.session_state.voice_error = None
+        
+        # Show voice input status
+        if st.session_state.listening:
+            st.info("🎙️ Listening... Click Stop when done.")
+        elif st.session_state.voice_error:
+            st.error(f"❌ {st.session_state.voice_error}")
+        elif st.session_state.temp_voice_input:
+            st.success("✅ Voice input received!")
 
     if st.button("🧹 Clear Chat"):
         st.session_state.chat_history = []

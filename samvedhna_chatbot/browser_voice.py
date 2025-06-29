@@ -7,43 +7,120 @@ def init_voice_features():
         """
         <script>
         // Speech synthesis setup
-        const synth = window.speechSynthesis;
-        
-        // Speech recognition setup
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        const recognition = new SpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = false;
-        
+        let synth = null;
+        let recognition = null;
+
+        function initVoiceFeatures() {
+            try {
+                // Initialize speech synthesis
+                synth = window.speechSynthesis;
+                
+                // Initialize speech recognition
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (!SpeechRecognition) {
+                    throw new Error('Speech recognition not supported in this browser');
+                }
+                recognition = new SpeechRecognition();
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                
+                // Set up recognition event handlers
+                recognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript;
+                    window.parent.postMessage({
+                        type: 'speech-input',
+                        value: transcript
+                    }, '*');
+                };
+                
+                recognition.onerror = (event) => {
+                    console.error('Speech recognition error:', event.error);
+                    window.parent.postMessage({
+                        type: 'speech-error',
+                        value: event.error
+                    }, '*');
+                };
+
+                recognition.onend = () => {
+                    window.parent.postMessage({
+                        type: 'speech-end'
+                    }, '*');
+                };
+
+                return true;
+            } catch (error) {
+                console.error('Error initializing voice features:', error);
+                window.parent.postMessage({
+                    type: 'voice-init-error',
+                    value: error.message
+                }, '*');
+                return false;
+            }
+        }
+
         // Function to speak text
         function speakText(text, lang) {
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = lang === 'hi' ? 'hi-IN' : 'en-US';
-            synth.speak(utterance);
+            try {
+                if (!synth) {
+                    throw new Error('Speech synthesis not initialized');
+                }
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = lang === 'hi' ? 'hi-IN' : 'en-US';
+                synth.speak(utterance);
+            } catch (error) {
+                console.error('Error speaking text:', error);
+                window.parent.postMessage({
+                    type: 'speak-error',
+                    value: error.message
+                }, '*');
+            }
         }
         
         // Function to start listening
         function startListening(lang) {
-            recognition.lang = lang === 'hi' ? 'hi-IN' : 'en-US';
-            recognition.start();
-            
-            recognition.onresult = (event) => {
-                const transcript = event.results[0][0].transcript;
-                window.parent.postMessage({type: 'speech-input', value: transcript}, '*');
-            };
-            
-            recognition.onerror = (event) => {
-                console.error('Speech recognition error:', event.error);
-                window.parent.postMessage({type: 'speech-error', value: event.error}, '*');
-            };
+            try {
+                if (!recognition) {
+                    throw new Error('Speech recognition not initialized');
+                }
+                recognition.lang = lang === 'hi' ? 'hi-IN' : 'en-US';
+                recognition.start();
+            } catch (error) {
+                console.error('Error starting speech recognition:', error);
+                window.parent.postMessage({
+                    type: 'listen-error',
+                    value: error.message
+                }, '*');
+            }
+        }
+
+        // Function to stop listening
+        function stopListening() {
+            try {
+                if (recognition) {
+                    recognition.stop();
+                }
+            } catch (error) {
+                console.error('Error stopping speech recognition:', error);
+            }
         }
         
+        // Initialize voice features when the page loads
+        window.addEventListener('load', () => {
+            initVoiceFeatures();
+        });
+
         // Listen for messages from Streamlit
         window.addEventListener('message', function(event) {
-            if (event.data.type === 'speak') {
-                speakText(event.data.text, event.data.lang);
-            } else if (event.data.type === 'listen') {
-                startListening(event.data.lang);
+            switch (event.data.type) {
+                case 'speak':
+                    speakText(event.data.text, event.data.lang);
+                    break;
+                case 'listen':
+                    startListening(event.data.lang);
+                    break;
+                case 'stop-listen':
+                    stopListening();
+                    break;
             }
         });
         </script>
@@ -54,8 +131,7 @@ def init_voice_features():
 
 def speak_browser(text: str, lang: str = 'english'):
     """Speak text using browser's speech synthesis"""
-    # Send message to browser to speak text
-    st.components.v1.html(
+    components.html(
         f"""
         <script>
         window.parent.postMessage({{
@@ -68,32 +144,39 @@ def speak_browser(text: str, lang: str = 'english'):
         height=0,
     )
 
-def listen_browser(lang: str = 'english'):
+def listen_browser(lang: str = 'english') -> str:
     """Start browser-based speech recognition"""
-    # Create a container for the transcript
-    transcript_placeholder = st.empty()
+    result_placeholder = st.empty()
     
-    # Send message to browser to start listening
     components.html(
         f"""
         <script>
+        let messageHandler = function(event) {{
+            if (event.data.type === 'speech-input') {{
+                const transcript = event.data.value;
+                window.parent.postMessage({{
+                    type: 'update-transcript',
+                    value: transcript
+                }}, '*');
+            }} else if (event.data.type === 'speech-error') {{
+                window.parent.postMessage({{
+                    type: 'update-transcript',
+                    value: '❌ Error: ' + event.data.value
+                }}, '*');
+            }} else if (event.data.type === 'speech-end') {{
+                window.removeEventListener('message', messageHandler);
+            }}
+        }};
+        
+        window.addEventListener('message', messageHandler);
+        
         window.parent.postMessage({{
             type: 'listen',
             lang: {repr('hi' if lang == 'hi' else 'en')}
         }}, '*');
-        
-        // Listen for transcript from recognition
-        window.addEventListener('message', function(event) {{
-            if (event.data.type === 'speech-input') {{
-                window.parent.postMessage({{
-                    type: 'update-transcript',
-                    value: event.data.value
-                }}, '*');
-            }}
-        }});
         </script>
         """,
         height=0,
     )
     
-    return transcript_placeholder 
+    return result_placeholder 
