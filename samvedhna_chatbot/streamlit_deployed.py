@@ -237,6 +237,31 @@ except Exception as e:
     st.info("Please check your API key configuration in .streamlit/secrets.toml")
     client = None
 
+def clean_llm_response(text):
+    """
+    Clean the LLM response by removing duplicates and unwanted content
+    """
+    # Split by common separators that might cause duplication
+    parts = text.split('~\n')
+    parts = [p.strip() for p in parts if p.strip()]
+    
+    if not parts:
+        return text
+        
+    # Take the first coherent part
+    cleaned = parts[0]
+    
+    # Remove any trailing tildes or newlines
+    cleaned = cleaned.strip('~').strip()
+    
+    # Remove emotion tags
+    cleaned = re.sub(r'\[EMOTION: [^\]]+\]', '', cleaned)
+    
+    # Clean up any extra whitespace
+    cleaned = ' '.join(cleaned.split())
+    
+    return cleaned
+
 # --- Session State Init ---
 for key, default in {
     "chat_history": [],
@@ -316,10 +341,17 @@ user_input = st.chat_input("Type your message...")
 # --- Chat Logic
 if user_input:
     extract_name(user_input)
-    emotion, score = detect_emotion(user_input)
+
+    # Translate Hindi input to English if needed
+    if st.session_state.lang == "hi":
+        user_input_english = translate_response(user_input, "en")
+    else:
+        user_input_english = user_input
+
+    emotion, score = detect_emotion(user_input_english)
     update_conversation_log(user_input, emotion, score, st.session_state.lang)
 
-    prompt = user_input
+    prompt = user_input_english
     if st.session_state.user_name:
         prompt = f"My name is {st.session_state.user_name}. {prompt}"
     if emotion not in ["neutral", "greeting"]:
@@ -346,6 +378,8 @@ if user_input:
             )
             message_content = response.choices[0].message.content
             reply = message_content.strip() if message_content else "I'm sorry, I couldn't generate a response."
+            # Clean the LLM response before translation
+            reply = clean_llm_response(reply)
         
         translated = translate_response(reply, st.session_state.lang)
         st.session_state.chat_history.append((user_input, translated))

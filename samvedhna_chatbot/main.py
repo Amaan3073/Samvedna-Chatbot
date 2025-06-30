@@ -94,6 +94,31 @@ def get_llm_response(prompt, emotion):
     except Exception as e:
         return f"❌ Error reaching OpenRouter: {e}"
 
+def clean_llm_response(text):
+    """
+    Clean the LLM response by removing duplicates and unwanted content
+    """
+    # Split by common separators that might cause duplication
+    parts = text.split('~\n')
+    parts = [p.strip() for p in parts if p.strip()]
+    
+    if not parts:
+        return text
+        
+    # Take the first coherent part
+    cleaned = parts[0]
+    
+    # Remove any trailing tildes or newlines
+    cleaned = cleaned.strip('~').strip()
+    
+    # Remove emotion tags
+    cleaned = re.sub(r'\[EMOTION: [^\]]+\]', '', cleaned)
+    
+    # Clean up any extra whitespace
+    cleaned = ' '.join(cleaned.split())
+    
+    return cleaned
+
 # --------------------- Main Chat Loop ---------------------
 while True:
     user_input = input("You (or type '/voice' to speak): ").strip()
@@ -154,9 +179,17 @@ while True:
     if lowered_input in ["i'm fine", "no i'm ok", "i'm okay", "i'm good"]:
         chat_history.append({"role": "user", "content": "Reset emotion context."})
 
-    emotion, score = detect_emotion(user_input)
+    # Translate Hindi input to English if needed
+    if lang == "hi":
+        user_input_english = translate_response(user_input, "en")
+    else:
+        user_input_english = user_input
+
+    emotion, score = detect_emotion(user_input_english)
     log_message(user_input, emotion, score, lang)
-    llm_reply = get_llm_response(user_input, emotion)
+    llm_reply = get_llm_response(user_input_english, emotion)
+    # Clean the LLM response before translation
+    llm_reply = clean_llm_response(llm_reply)
     translated_reply = translate_response(llm_reply, lang)
 
     print("Bot:", translated_reply)
